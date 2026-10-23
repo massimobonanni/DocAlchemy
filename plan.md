@@ -32,14 +32,18 @@ Out of scope: authentication UI, analysis history, document preview/editing, bat
 
 ## 3. Verified service constraints
 
-1. Use Azure Content Understanding, not Azure Document Intelligence. The documented .NET client is `Azure.AI.ContentUnderstanding`; current SDK documentation describes stable version `1.1.0`.
-2. Prefer the GA data-plane API `2025-11-01`. Do not silently adopt `2026-06-01-preview`. Pin and verify the SDK/API combination before implementation proceeds beyond the integration contract.
-3. Confidence is opt-in: analyzer configuration uses `estimateFieldSourceAndConfidence`, and individual fields can use `estimateSourceAndConfidence`. Inheritance and field overrides must be considered when reporting whether confidence is enabled.
-4. Document inputs include PDF, DOCX, TXT, Markdown, and supported document-image formats. Images containing documents must follow the document-analysis path so document field-confidence behavior applies.
-5. Use asynchronous analysis operations and polling. Do not use synchronous operations with their smaller input and page limits, which can truncate processing.
-6. A Foundry resource alone is insufficient: provision supported model deployments and configure Content Understanding model-deployment defaults. This is part of environment readiness, not a manual undocumented prerequisite.
-7. Current Content Understanding RBAC distinguishes Reader, Contributor, and Owner. The service-specific Contributor role does not permit deletion; the application's analyzer-management scenario requires the service-specific Owner capabilities.
-8. Model compatibility, deployment versions, quota, and regional availability must be validated against the selected environment. SDK examples and current service documentation use different model baselines; do not copy a model deployment name without checking it.
+1. Use Azure Content Understanding, not Azure Document Intelligence. Pin the stable .NET package `Azure.AI.ContentUnderstanding` at `1.1.0`; use .NET SDK feature band `10.0.4xx` and target `net10.0`. Select the then-current servicing patch when scaffolding and record that exact SDK in `global.json`.
+2. Use GA data-plane API `2025-11-01`. Do not silently adopt `2026-06-01-preview`. The stable SDK exposes protocol overloads for raw analyzer JSON and binary input, so the API/schema combination is source-verified without adding a separate REST client.
+3. Create analyzers with `PUT /contentunderstanding/analyzers/{analyzerId}?api-version=2025-11-01`; the path ID is canonical and matches `^[a-zA-Z0-9._-]{1,64}$`. The create body is the GA request resource (configuration, schema, model, and supported metadata); analyzer ID is supplied separately. Set `allowReplace=false` explicitly. Treat a duplicate as an error; never retry creation as replacement.
+4. The SDK raw protocol overloads are the fidelity boundary: `CreateAnalyzerAsync` accepts `RequestContent` and returns `Operation<BinaryData>`; `AnalyzeBinaryAsync` accepts `RequestContent` plus a content type and returns `Operation<BinaryData>`; `GetAnalyzersAsync` returns `AsyncPageable<BinaryData>`. Parse with `System.Text.Json` while preserving the original JSON nodes. Do not use typed SDK round-trips for user analyzer definitions or result field discriminators.
+5. Analyzer listing is paginated (`nextLink`); consume every page. Use analyzer metadata and the documented prebuilt-analyzer catalog to establish modality. A custom analyzer's `baseAnalyzerId` identifies its base modality (`prebuilt-document`, `prebuilt-image`, `prebuilt-audio`, or `prebuilt-video`); there is no documented `isBuiltIn` property. Do not infer that the list contains every prebuilt analyzer or expose prebuilt IDs as mutable custom resources.
+6. Confidence is opt-in. Analyzer configuration uses `estimateFieldSourceAndConfidence`; a field can set `estimateSourceAndConfidence`, which overrides the analyzer-level setting. For document analyzers, GA documentation supports confidence for extract/classify/generate field methods. Missing confidence remains null; do not synthesize it.
+7. GA asynchronous document/text input formats include PDF/TIFF, JPEG/JPE/PNG/BMP/HEIF/HEIC, Office formats including DOCX, and text formats including TXT and Markdown. The service async ceiling is 200 MB (and format-specific page/character limits); this app's 20 MiB upload limit is intentionally stricter. Use the document-analysis path for images that contain documents. The API accepts a binary body; the SDK's content type defaults to `application/octet-stream`, and the app will send a server-selected canonical MIME type from its extension allowlist.
+8. Result `contents` is an array and field values are a discriminated JSON union: string, date, time, number, integer, boolean, array, object, and JSON. Array items and object properties can nest. Preserve the returned `type`, typed JSON value, and nullable `confidence`; retain valid unknown future field nodes opaquely as JSON, and fail explicitly on malformed nodes rather than inventing values.
+9. Analyzer creation and analysis are long-running operations. Use SDK `Operation<T>` with `WaitUntil.Started`, then cancellable bounded polling; creation and analysis have distinct operation results. The GA binary operation is `:analyzeBinary`; URL-based `:analyze` is not the upload path.
+10. A Foundry resource alone is insufficient: the Content Understanding resource needs compatible deployed models and resource defaults. The GA defaults API is `PATCH /contentunderstanding/defaults?api-version=2025-11-01` with `modelDeployments`; it supports Microsoft Entra ID. Choose `gpt-5.2` version `2025-12-11` plus `text-embedding-3-large` as the current GA candidate for completion/embedding aliases. Check each analyzer's `supportedModels` and actual deployment availability before use; the older SDK README baseline is not a regional availability guarantee.
+11. Use `Cognitive Services Content Understanding Owner` (`4b42bd01-da42-4c92-9b07-15ea5bd6a602`) for the Web App managed identity at the Foundry account scope. The service security page documents Owner as full Content Understanding data-plane access, including analyzer create/list/analyze/delete; Contributor lacks analyzer delete. The role name/capabilities are confirmed by Microsoft Learn, and the GUID matches the Azure-maintained built-in role catalog. For the separate defaults bootstrap, use Microsoft Entra ID via `DefaultAzureCredential` and assign `Cognitive Services User` (`a97b65f3-24c7-4388-baec-2e87135dc908`) to the bootstrap principal at the Foundry resource scope, as directed by the .NET SDK README for defaults configuration. The GA defaults API explicitly supports Entra ID. Keep deployment/role-assignment control-plane permissions separate from these data-plane roles; do not grant the bootstrap role to the Web App unless that identity itself performs bootstrap.
+12. Model compatibility, model/deployment version, quota, and regional availability must be validated against the selected environment. Documentation verifies the GA API/model support list, not a particular resource, region, quota, or role assignment.
 
 ### Integration compatibility gate
 
@@ -127,6 +131,7 @@ Use .NET templates rather than hand-writing generated scaffolding. Keep project 
 - `IAnalysisResultStore`: persist the immutable normalized result and return a nonpublic storage reference.
 - Shared models for analyzer metadata, recursive extracted fields, content-item grouping, analysis results, and storage references.
 - Represent dynamic typed values with System.Text.Json types rather than flattening everything to strings. Preserve numbers, booleans, dates as returned, arrays, objects, nulls, and per-field nullable confidence.
+- Keep the service's field `type` string and raw JSON value together; unknown future field types remain opaque JSON instead of being dropped or coerced. Only malformed required structure is an explicit mapping failure.
 - Keep Azure configuration, client construction, request retries, and SDK-specific error translation in the Azure project.
 - Put shared threshold comparison and result-contract rules in Core. Keep UI presentation and interaction state in Web.
 
@@ -182,6 +187,8 @@ Saving retries use the same ID and identical serialized snapshot, making retries
 
 - Web settings include `Analysis:ConfidenceThreshold` and `Uploads:MaxDocumentBytes`, with the confirmed defaults. Bound analyzer JSON uploads explicitly as well, within the same maximum-upload policy.
 - Bind and validate Content Understanding endpoint/API/auth settings and Blob endpoint/container/auth settings at startup.
+- Freeze the configuration/provisioning contract: `ContentUnderstanding:Endpoint`, `ContentUnderstanding:ApiVersion` (`2025-11-01`), `ContentUnderstanding:AuthenticationMode` (`ManagedIdentity` or `ApiKey`), `ContentUnderstanding:ApiKey`; `Storage:BlobServiceEndpoint`, `Storage:ContainerName`, `Storage:AuthenticationMode` (`ManagedIdentity` or `AccountKey`), `Storage:AccountName`, `Storage:AccountKey`; `Analysis:ConfidenceThreshold`, `Analysis:OperationTimeout`, `Analysis:PollInterval`, and `Uploads:MaxDocumentBytes`. Azure environment variables use the standard double-underscore form. Defaults remain threshold `0.80`, max upload `20,971,520`, and managed identity for both services.
+- Provisioning maps the Foundry resource endpoint and Blob service endpoint/container to those settings, sets the GA API version and numeric defaults, sets Application Insights through `APPLICATIONINSIGHTS_CONNECTION_STRING`, and uses a Key Vault reference for `ContentUnderstanding:ApiKey` only in explicitly selected key mode.
 - Configure identity/key modes independently for Content Understanding and Storage. Require the correct credential inputs for the selected mode; never fall back silently from failed identity authentication to a key.
 - Use managed identity in Azure. For local identity use the documented Azure credential chain; for local key mode use .NET user secrets or protected environment settings.
 - Storage key mode uses the account name/key through the Blob SDK; Content Understanding uses its API key through the Content Understanding SDK.
@@ -243,13 +250,14 @@ Keep Blob containers nonpublic and use identity by default. Account-key access r
 
 | Principal | Scope | Permission |
 | --- | --- | --- |
-| Web App managed identity | Foundry account | `Cognitive Services Content Understanding Owner`, or the verified least-privilege equivalent covering create/list/analyze/delete |
+| Web App managed identity | Foundry account | `Cognitive Services Content Understanding Owner` (the service-specific role documented to include create/list/analyze/delete; do not substitute subscription/resource-group Owner) |
 | Web App managed identity | Results container | `Storage Blob Data Contributor` |
 | Web App managed identity | Key Vault | `Key Vault Secrets User` |
-| Deployment/bootstrap operator | Deployment and service setup scopes | Resource provisioning, role-assignment permission, and the verified data-plane permission to configure Content Understanding defaults |
+| Deployment/bootstrap operator identity | Foundry account | `Cognitive Services User` (`a97b65f3-24c7-4388-baec-2e87135dc908`) for Entra-authenticated defaults configuration, as specified by the .NET SDK README; use `DefaultAzureCredential`. |
+| Deployment/bootstrap operator | Deployment and role-assignment scopes | The separate control-plane permissions needed to provision resources and create the role assignments above; confirm the operator's actual access in the approved environment. |
 | Foundry identity, if required by the selected model path | Required model resource | Only the documented model-inference permissions |
 
-Do not confuse Content Understanding Owner with subscription/resource-group `Owner`. Verify exact role definitions and scope compatibility before generating role assignments.
+Do not confuse Content Understanding Owner with subscription/resource-group `Owner`. The selected service roles and GUIDs are documented above; verify that both built-in definitions are available and that the approved principal can receive the assignments at the intended scopes during environment preflight. Do not claim live authorization until tested against that environment.
 
 ### Provisioning and readiness
 
@@ -284,7 +292,7 @@ All steps are initially `pending`; plan preparation does not count as implementa
 
 | Step / tracking ID | Deliverable | Depends on | Focus for manual model selection | Status |
 | --- | --- | --- | --- | --- |
-| 01 / `step-01-contract` | Verified SDK/API, schemas, model mappings, and access contracts | None | Source-backed research; compatibility reasoning | pending |
+| 01 / `step-01-contract` | Verified SDK/API, schemas, model mappings, and access contracts | None | Source-backed research; compatibility reasoning | done |
 | 02 / `step-02-scaffold` | Compiling solution and test scaffolding | 01 | Precise .NET tooling and project setup | pending |
 | 03 / `step-03-core` | Core interfaces, recursive models, and result contract | 02 | Domain modeling; type safety; boundary tests | pending |
 | 04 / `step-04-config` | Validated settings, authentication modes, and DI | 03 | Azure SDK integration; credential correctness | pending |
@@ -392,7 +400,7 @@ Each prompt below includes the common execution protocol by reference to section
 
 **Prerequisites:** Step 01.
 
-**Read/change scope:** Root solution/SDK configuration, `.gitignore`, the three projects under `src`, and `tests/DocAlchemy.Tests`.
+**Read/change scope:** Root solution/SDK configuration, `.gitignore`, the  projects under `src`, and the test projects under `tests`.
 
 **Actions:**
 1. Read repository C# instructions and inspect installed tooling. Use .NET templates for Core, Azure services, the .NET 10 Interactive Server web app, and a test project.
@@ -727,7 +735,61 @@ Each prompt below includes the common execution protocol by reference to section
 
 ## 14. Per-step completion records
 
-No implementation step has been executed yet. Append one record per attempted step using the structure below. Keep existing evidence; if a retry supersedes a failed attempt, explain what changed. Store no keys, tokens, document contents, or sensitive account details here.
+Step 01 is complete; its verified contracts, role evidence, and intentionally deferred environment checks are recorded below. Append one record per attempted step using the structure below. Keep existing evidence; if a retry supersedes a failed attempt, explain what changed. Store no keys, tokens, document contents, or sensitive account details here.
+
+### Step 01 / `step-01-contract`
+
+```text
+Step: 01 / step-01-contract
+Status: done
+Development model: not recorded
+Prerequisites checked: None; read Sections 3, 4, 6, 8, 9, 12, and 13 and repository C# instructions.
+Files changed: plan.md
+Contracts/decisions:
+  - .NET target net10.0; SDK feature band 10.0.4xx, with exact servicing patch to be pinned at Step 02. Stable Azure.AI.ContentUnderstanding 1.1.0; GA data-plane API 2025-11-01. No preview API/package.
+  - Create uses the analyzer ID in the path (1-64 characters; ^[a-zA-Z0-9._-]{1,64}$) and a GA create-request JSON body. Pass raw RequestContent; explicitly pass allowReplace=false. A duplicate must fail, not replace. The REST request schema does not list analyzerId as a body property; keep the separately entered path ID authoritative and reject a conflicting/unsupported duplicate rather than mutating uploaded JSON.
+  - Use the stable SDK protocol surface for lossless JSON: CreateAnalyzerAsync(RequestContent) -> Operation<BinaryData>; GetAnalyzersAsync -> AsyncPageable<BinaryData>; AnalyzeBinaryAsync(RequestContent, contentType) -> Operation<BinaryData>. Consume all analyzer pages. These APIs avoid typed model loss and do not require a separate REST adapter.
+  - Use :analyzeBinary for a single uploaded document, not URL-based :analyze. Use WaitUntil.Started and cancellable, bounded Operation polling. The request body is binary; SDK contentType defaults to application/octet-stream. App allowlist mapping: PDF application/pdf; DOCX application/vnd.openxmlformats-officedocument.wordprocessingml.document; TXT text/plain; MD text/markdown; JPEG image/jpeg; PNG image/png; BMP image/bmp; TIFF image/tiff; HEIF image/heif; HEIC image/heic. The service documents supported extensions, while the exact MIME mapping is an application-side contract.
+  - API supports async PDF/TIFF/JPEG/JPE/PNG/BMP/HEIF/HEIC, DOCX and other Office types, and TXT/MD plus other text types; service ceiling is 200 MB and type-specific page/character limits. App's 20 MiB bound remains. Image documents use document analysis.
+  - The list response is paged by nextLink. No documented isBuiltIn flag exists; use the official prebuilt catalog and analyzer metadata, and use custom baseAnalyzerId for modality. Do not assume the list includes all prebuilt analyzers or permit prebuilt mutation. Document custom analyzers are those based on prebuilt-document.
+  - Effective confidence: analyzer config estimateFieldSourceAndConfidence defaults off; per-field estimateSourceAndConfidence overrides it. GA document analyzer confidence is supported across extract/classify/generate methods. Preserve absent confidence as null.
+  - Normalize contents as an array; retain field type and exact JSON value recursively, including arrays, objects, and JSON fields. Preserve valid unrecognized future type nodes opaquely; fail malformed nodes without fabricated values.
+  - Candidate GA model set: gpt-5.2 (model version 2025-12-11) and text-embedding-3-large. Resource-default mappings use prebuilt-analyzer-completion and prebuilt-analyzer-embedding aliases to the deployment names, plus concrete model-name mappings where required. The mini alias is only added if an actual selected analyzer's supportedModels requires it. GET analyzer supportedModels is authoritative; target-region capacity remains unverified.
+  - App/provisioning keys: ContentUnderstanding:Endpoint, ContentUnderstanding:ApiVersion, ContentUnderstanding:AuthenticationMode, ContentUnderstanding:ApiKey; Storage:BlobServiceEndpoint, Storage:ContainerName, Storage:AuthenticationMode, Storage:AccountName, Storage:AccountKey; Analysis:ConfidenceThreshold, Analysis:OperationTimeout, Analysis:PollInterval; Uploads:MaxDocumentBytes; APPLICATIONINSIGHTS_CONNECTION_STRING. Identity mode is default; keys are independently opt-in per service.
+  - App identity contract: assign `Cognitive Services Content Understanding Owner` (`4b42bd01-da42-4c92-9b07-15ea5bd6a602`) to the Web App managed identity at the Foundry account scope. This service-specific Owner role covers CRUD/analyze; Contributor lacks delete.
+  - Bootstrap contract is separate: the SDK README says to assign `Cognitive Services User` (`a97b65f3-24c7-4388-baec-2e87135dc908`) to the principal configuring model defaults, including when that principal is a resource owner. Use `DefaultAzureCredential` and `PATCH /contentunderstanding/defaults` with Entra ID; keep deployment and role-assignment control-plane permissions separate.
+Evidence (official sources, reviewed 2026-10-23):
+  - SDK package/readme and async-operation behavior: https://learn.microsoft.com/en-us/dotnet/api/overview/azure/ai.contentunderstanding-readme?view=azure-dotnet
+  - SDK raw create overload: https://learn.microsoft.com/en-us/dotnet/api/azure.ai.contentunderstanding.contentunderstandingclient.createanalyzerasync?view=azure-dotnet
+  - SDK raw binary operation and contentType: https://learn.microsoft.com/en-us/dotnet/api/azure.ai.contentunderstanding.contentunderstandingclient.analyzebinaryasync?view=azure-dotnet
+  - SDK paged raw analyzer list: https://learn.microsoft.com/en-us/dotnet/api/azure.ai.contentunderstanding.contentunderstandingclient.getanalyzersasync?view=azure-dotnet
+  - GA create body, ID constraint, allowReplace, and operation: https://learn.microsoft.com/en-us/rest/api/contentunderstanding/content-analyzers/create-or-replace?view=rest-contentunderstanding-2025-11-01
+  - GA list/nextLink: https://learn.microsoft.com/en-us/rest/api/contentunderstanding/content-analyzers/list?view=rest-contentunderstanding-2025-11-01
+  - GA binary input and operation response: https://learn.microsoft.com/en-us/rest/api/contentunderstanding/content-analyzers/analyze-binary?view=rest-contentunderstanding-2025-11-01
+  - GA result schema, content array, and field union: https://learn.microsoft.com/en-us/rest/api/contentunderstanding/content-analyzers/get-result?view=rest-contentunderstanding-2025-11-01
+  - GA analyzer operation polling: https://learn.microsoft.com/en-us/rest/api/contentunderstanding/content-analyzers/get-operation-status?view=rest-contentunderstanding-2025-11-01
+  - GA model defaults API and mappings: https://learn.microsoft.com/en-us/rest/api/contentunderstanding/content-analyzers/update-defaults?view=rest-contentunderstanding-2025-11-01 and https://learn.microsoft.com/en-us/azure/ai-services/content-understanding/concepts/models-deployments
+  - Supported models, versions, input types and service limits: https://learn.microsoft.com/en-us/azure/ai-services/content-understanding/service-limits
+  - Confidence field inheritance and analyzer schema: https://learn.microsoft.com/en-us/azure/ai-services/content-understanding/concepts/analyzer-reference
+  - Prebuilt analyzers and modality catalog: https://learn.microsoft.com/en-us/azure/ai-services/content-understanding/concepts/prebuilt-analyzers
+  - Content Understanding role names/capabilities: https://learn.microsoft.com/en-us/azure/ai-services/content-understanding/concepts/secure-communications
+  - Content Understanding Owner GUID cross-check (Azure-maintained role catalog): https://github.com/Azure/Azure-Sentinel/blob/master/Sample%20Data/Feeds/AzureBuiltInRole.csv
+  - Cognitive Services User built-in role definition and GUID: https://learn.microsoft.com/en-us/azure/role-based-access-control/built-in-roles/ai-machine-learning#cognitive-services-user
+  - SDK identity/defaults guidance: https://learn.microsoft.com/en-us/dotnet/api/overview/azure/ai.contentunderstanding-readme?view=azure-dotnet
+  - .NET 10 SDK lifecycle/feature bands: https://learn.microsoft.com/en-us/dotnet/core/porting/versioning-sdk-msbuild-vs#lifecycle
+Checks executed:
+  - Official Microsoft Learn documentation searches and full-page fetches for the API, SDK, model, role, confidence, formats, and .NET SDK contracts. Verified the current stable SDK docs describe v1.1.0 and SDK API pages list the raw protocol overloads.
+  - Cross-checked the user-provided Content Understanding Owner GUID against the Azure-maintained built-in role catalog; verified its capabilities against the Microsoft Learn Content Understanding security page.
+  - Verified `Cognitive Services User` GUID in Microsoft Learn built-in role documentation and Azure-maintained repositories; confirmed the .NET SDK README explicitly uses that role for configuring defaults. Confirmed the GA defaults API declares Microsoft Entra ID OAuth support.
+  - Read-only repository review only. No application, infrastructure, dependency, or test files were created or changed.
+Checks not executed:
+  - No Azure subscription/resource access, role lookup, API call, deployment, model operation, or billable analysis, per request.
+  - No local package restore/build or installed SDK inventory; there is no solution yet and exact SDK servicing patch is selected at Step 02.
+  - No target-region/model availability, quota, model deployment, or role-assignment test; these require the approved environment. Do not claim these checks passed.
+Open issues:
+  - No contract blocker remains. Target-resource role assignment, operator control-plane access, analyzer `supportedModels`, model deployment/version/region/capacity/quota, and actual input acceptance remain environment checks for the approved target; no Azure subscription was accessed in Step 01.
+Handoff: Step 01 is done. Dependent steps may proceed using the recorded role IDs and separated principals. At environment preflight, verify role availability/scope and operator authorization; after provisioning, verify the Web App managed identity can call Content Understanding and that the bootstrap identity can read/update defaults. Do not claim those live checks passed until executed. Stop here for manual selection of the next step.
+```
 
 ```text
 Step: <two-digit number and tracking ID>
