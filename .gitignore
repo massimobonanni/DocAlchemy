@@ -426,3 +426,8 @@ FodyWeavers.xsd
 
 # Official VS Code C# Dev Kit Extension exclusion
 #*.lscache
+
+# Local AZD environments and machine-specific settings
+.azure/
+*.local.json
+*.secrets.json

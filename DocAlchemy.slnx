@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/DocAlchemy.ContentUnderstanding/DocAlchemy.ContentUnderstanding.csproj" />
+    <Project Path="src/DocAlchemy.Core/DocAlchemy.Core.csproj" />
+    <Project Path="src/DocAlchemy.Storage/DocAlchemy.Storage.csproj" />
+    <Project Path="src/DocAlchemy.Web/DocAlchemy.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/DocAlchemy.ContentUnderstanding.Tests/DocAlchemy.ContentUnderstanding.Tests.csproj" />
+    <Project Path="tests/DocAlchemy.Core.Tests/DocAlchemy.Core.Tests.csproj" />
+    <Project Path="tests/DocAlchemy.Storage.Tests/DocAlchemy.Storage.Tests.csproj" />
+    <Project Path="tests/DocAlchemy.Web.Tests/DocAlchemy.Web.Tests.csproj" />
+  </Folder>
+</Solution>

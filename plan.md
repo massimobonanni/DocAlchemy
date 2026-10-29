@@ -121,7 +121,7 @@ Use .NET templates rather than hand-writing generated scaffolding. Keep project 
 - Core has no Azure SDK or UI dependencies.
 - Azure references Core and owns all Foundry, Content Understanding, and Blob SDK calls.
 - Web references Core and Azure only for application composition; Razor components inject Core service interfaces and do not instantiate SDK clients.
-- Tests reference the projects under test. Use one test project unless the actual tooling requires separation.
+- Use one test project per application project: DocAlchemy.Core.Tests, DocAlchemy.Storage.Tests, DocAlchemy.Web.Tests, and DocAlchemy.ContentUnderstanding.Tests. Each directly references its corresponding project under src.
 - Do not add a separate HTTP API, AppHost, Docker image, or agent framework: they are unnecessary for this server-rendered demo.
 
 ### Core contracts
@@ -293,7 +293,7 @@ All steps are initially `pending`; plan preparation does not count as implementa
 | Step / tracking ID | Deliverable | Depends on | Focus for manual model selection | Status |
 | --- | --- | --- | --- | --- |
 | 01 / `step-01-contract` | Verified SDK/API, schemas, model mappings, and access contracts | None | Source-backed research; compatibility reasoning | done |
-| 02 / `step-02-scaffold` | Compiling solution and test scaffolding | 01 | Precise .NET tooling and project setup | pending |
+| 02 / `step-02-scaffold` | Compiling solution and test scaffolding | 01 | Precise .NET tooling and project setup | done |
 | 03 / `step-03-core` | Core interfaces, recursive models, and result contract | 02 | Domain modeling; type safety; boundary tests | pending |
 | 04 / `step-04-config` | Validated settings, authentication modes, and DI | 03 | Azure SDK integration; credential correctness | pending |
 | 05 / `step-05-analyzers` | Analyzer management adapter and tests | 04 | API semantics; asynchronous operations | pending |
@@ -789,6 +789,52 @@ Checks not executed:
 Open issues:
   - No contract blocker remains. Target-resource role assignment, operator control-plane access, analyzer `supportedModels`, model deployment/version/region/capacity/quota, and actual input acceptance remain environment checks for the approved target; no Azure subscription was accessed in Step 01.
 Handoff: Step 01 is done. Dependent steps may proceed using the recorded role IDs and separated principals. At environment preflight, verify role availability/scope and operator authorization; after provisioning, verify the Web App managed identity can call Content Understanding and that the bootstrap identity can read/update defaults. Do not claim those live checks passed until executed. Stop here for manual selection of the next step.
+```
+
+### Step 02 / `step-02-scaffold`
+
+```text
+Step: 02 / step-02-scaffold
+Status: done
+Development model: not recorded
+Prerequisites checked: Step 01 is done; reviewed its contract and handoff in section 14, section 4 project boundaries, section 9 execution protocol, and .github/instructions/csharp.instructions.md.
+Files changed: .gitignore, README.md, Directory.Build.props, DocAlchemy.slnx, global.json, src/DocAlchemy.Core/DocAlchemy.Core.csproj, src/DocAlchemy.Core/README.md, src/DocAlchemy.ContentUnderstanding/DocAlchemy.ContentUnderstanding.csproj, src/DocAlchemy.ContentUnderstanding/README.md, src/DocAlchemy.Storage/DocAlchemy.Storage.csproj, src/DocAlchemy.Storage/README.md, src/DocAlchemy.Web/DocAlchemy.Web.csproj, src/DocAlchemy.Web/README.md, generated Web scaffold under src/DocAlchemy.Web, tests/DocAlchemy.Tests/DocAlchemy.Tests.csproj, tests/DocAlchemy.Tests/README.md, tests/DocAlchemy.Tests/ArchitectureTests.cs, deleted generated Class1.cs files and template Home.razor/UnitTest1.cs.
+Contracts/decisions:
+  - Pinned SDK 10.0.403 in global.json with latestPatch roll-forward; all projects target net10.0 and Directory.Build.props enables C# 14, nullable reference types, and implicit usings.
+  - Initially used one xUnit test project; superseded by the user-requested per-project test structure recorded below. Core has no project dependencies; ContentUnderstanding and Storage each reference Core; Web references Core and both adapters.
+  - Created the .NET 10 Blazor Web App with Interactive Server rendering and removed the generated Hello World page and placeholder library/test classes. No demo analyzers/documents or service behavior were added.
+  - Added project READMEs and root build/test/run instructions. Extended .gitignore for local AZD environments and machine-specific/secrets JSON files while preserving existing ignore rules.
+  - Added a meaningful architecture test asserting that the Core assembly does not reference Azure SDK or ASP.NET Core assemblies.
+Checks executed:
+  - dotnet --version: 10.0.403.
+  - dotnet build DocAlchemy.slnx: succeeded, 0 warnings and 0 errors.
+  - dotnet test DocAlchemy.slnx --no-build: passed, 1 test discovered and passed.
+  - dotnet sln DocAlchemy.slnx list: confirmed the four application projects and single test project are included.
+  - git diff --check: passed with no whitespace errors.
+Checks not executed:
+  - No Azure resource access, credentials, deployments, billable requests, or application/service acceptance checks; those are outside this step.
+Open issues: None for the step 02 acceptance criteria.
+Handoff: Step 03 may add Core contracts/models and Core-focused tests. Keep Core free of Azure SDK and UI dependencies. No later feature or Azure service implementation was added; stop for manual selection of the next step.
+```
+
+#### Step 02 follow-up - Per-project test structure
+
+```text
+Status: done
+Reason: User requested one test project for every project under src, superseding the initial single-project test decision.
+Files changed: DocAlchemy.slnx, README.md, plan.md, tests/DocAlchemy.Core.Tests, tests/DocAlchemy.Storage.Tests, tests/DocAlchemy.Web.Tests, tests/DocAlchemy.ContentUnderstanding.Tests; removed tests/DocAlchemy.Tests.
+Contracts/decisions:
+  - Four .NET 10 xUnit projects created with dotnet templates. Each directly references only its corresponding application project.
+  - Moved the existing architecture test into DocAlchemy.Core.Tests and updated its namespace.
+  - Removed generated placeholder tests. The other three test projects intentionally contain no tests until their application behavior is implemented.
+  - Updated section 4 and project READMEs to require the per-project structure for subsequent steps.
+Checks executed:
+  - dotnet build DocAlchemy.slnx: succeeded, 0 warnings and 0 errors.
+  - dotnet test DocAlchemy.slnx --no-build: Core architecture test passed; the other three projects reported no available tests, as expected for these empty scaffolds.
+  - dotnet sln DocAlchemy.slnx list: confirmed four application projects and four corresponding test projects; obsolete DocAlchemy.Tests is no longer included.
+  - git diff --check: passed.
+Open issues: None for the structural correction.
+Handoff: Add future tests to the project matching the application project under test; do not restore the combined test project.
 ```
 
 ```text
