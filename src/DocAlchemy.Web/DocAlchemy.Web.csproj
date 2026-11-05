@@ -6,7 +6,12 @@
     <ProjectReference Include="..\DocAlchemy.Storage\DocAlchemy.Storage.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Microsoft.ApplicationInsights.AspNetCore" Version="3.2.0" />
+  </ItemGroup>
+
   <PropertyGroup>
+    <UserSecretsId>5ac9e4b7-3193-41bd-909b-03452ca09ceb</UserSecretsId>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>

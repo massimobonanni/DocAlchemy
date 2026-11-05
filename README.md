@@ -17,6 +17,8 @@ The projects are scaffolds; application and Azure service behavior will be added
 
 ## Local checks
 
+The web app requires both Azure service endpoints and the Blob container name at startup. See [the Web project README](src/DocAlchemy.Web/README.md) for all settings and credential modes. No Azure service calls are made until an operation is invoked.
+
 ```powershell
 dotnet build DocAlchemy.slnx
 dotnet test DocAlchemy.slnx

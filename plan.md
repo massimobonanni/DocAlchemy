@@ -295,7 +295,7 @@ All steps are initially `pending`; plan preparation does not count as implementa
 | 01 / `step-01-contract` | Verified SDK/API, schemas, model mappings, and access contracts | None | Source-backed research; compatibility reasoning | done |
 | 02 / `step-02-scaffold` | Compiling solution and test scaffolding | 01 | Precise .NET tooling and project setup | done |
 | 03 / `step-03-core` | Core interfaces, recursive models, and result contract | 02 | Domain modeling; type safety; boundary tests | done |
-| 04 / `step-04-config` | Validated settings, authentication modes, and DI | 03 | Azure SDK integration; credential correctness | pending |
+| 04 / `step-04-config` | Validated settings, authentication modes, and DI | 03 | Azure SDK integration; credential correctness | done |
 | 05 / `step-05-analyzers` | Analyzer management adapter and tests | 04 | API semantics; asynchronous operations | pending |
 | 06 / `step-06-extraction` | Analysis adapter and lossless result mapping | 04 | Complex mapping; polling and failure handling | pending |
 | 07 / `step-07-storage` | Idempotent Blob persistence and tests | 04 | Persistence consistency; serialization | pending |
@@ -874,4 +874,31 @@ Checks not executed:
   - No Azure resource access, credentials, deployments, billable requests, or application/service acceptance checks; those are outside this step.
 Open issues: None for the Step 03 acceptance criteria.
 Handoff: Step 04 may add Azure configuration and DI; keep Core free of Azure SDK and UI dependencies. Use AnalysisResult and AnalysisJson as the normalized persistence contract, preserve captured identity/threshold/time on retries, and use FieldPath for recursive mapper output. Stop here for manual selection of the next step.
+```
+
+### Step 04 / `step-04-config`
+
+```text
+Step: 04 / step-04-config
+Status: done
+Development model: not recorded
+Prerequisites checked: Step 03 is done; reviewed sections 6 and 9, the Step 03 handoff, Step 04 scope, and .github/instructions/csharp.instructions.md.
+Files changed: README.md, plan.md, src/DocAlchemy.ContentUnderstanding/DocAlchemy.ContentUnderstanding.csproj, src/DocAlchemy.ContentUnderstanding/Configuration/ContentUnderstandingOptions.cs, src/DocAlchemy.ContentUnderstanding/Configuration/ContentUnderstandingOptionsValidator.cs, src/DocAlchemy.ContentUnderstanding/ContentUnderstandingServiceCollectionExtensions.cs, src/DocAlchemy.ContentUnderstanding/README.md, src/DocAlchemy.Storage/DocAlchemy.Storage.csproj, src/DocAlchemy.Storage/Configuration/StorageOptions.cs, src/DocAlchemy.Storage/Configuration/StorageOptionsValidator.cs, src/DocAlchemy.Storage/StorageServiceCollectionExtensions.cs, src/DocAlchemy.Storage/README.md, src/DocAlchemy.Web/DocAlchemy.Web.csproj, src/DocAlchemy.Web/Program.cs, src/DocAlchemy.Web/Configuration/AnalysisOptions.cs, src/DocAlchemy.Web/Configuration/UploadsOptions.cs, src/DocAlchemy.Web/Configuration/DocAlchemyOptionsValidator.cs, src/DocAlchemy.Web/Configuration/DocAlchemyConfigurationExtensions.cs, src/DocAlchemy.Web/README.md, tests/DocAlchemy.Web.Tests/AzureClientCompositionTests.cs, tests/DocAlchemy.Web.Tests/README.md.
+Contracts/decisions:
+  - Pinned Azure.AI.ContentUnderstanding 1.1.0; added Azure.Identity 1.21.0, Azure.Storage.Blobs 12.30.1, Microsoft.Extensions.Options.ConfigurationExtensions 10.0.14, and Microsoft.ApplicationInsights.AspNetCore 3.2.0.
+  - Content Understanding's GA API version is fixed to 2025-11-01. Both Azure clients are singleton/thread-safe and use three exponential retries with SDK content logging disabled.
+  - ContentUnderstanding:AuthenticationMode (ManagedIdentity or ApiKey) and Storage:AuthenticationMode (ManagedIdentity or AccountKey) are validated and selected independently. Managed identity uses DefaultAzureCredential with interactive browser auth excluded; a selected mode never falls back to the other credential. Irrelevant key settings are rejected.
+  - Required endpoints must be absolute HTTPS URIs without user information, query, or fragment. Storage container/account names and account-key Base64 syntax are checked before client construction. These checks are syntactic and do not test Azure reachability or permissions.
+  - Analysis defaults are threshold 0.80, operation timeout 00:10:00, and poll interval 00:00:02. Confidence must be finite and in [0,1], timeout is positive and at most two hours, and polling is positive and no longer than the timeout. Upload defaults to 20,971,520 bytes and is bounded by the service 200,000,000-byte limit.
+  - Application Insights is enabled only when APPLICATIONINSIGHTS_CONNECTION_STRING is set. Its HTTP instrumentation redacts query parameter values by default; the application does not instrument request bodies or service payloads. Trace/span IDs are included in logging scopes.
+  - Documented every setting and its default/validation in src/DocAlchemy.Web/README.md, including the exact provisioning names and local user-secrets workflow. No credentials were added to the repository.
+Checks executed:
+  - dotnet test tests\DocAlchemy.Web.Tests\DocAlchemy.Web.Tests.csproj: passed, 18 tests including four independent identity/key combinations and validation failures; client construction did not issue Azure calls.
+  - dotnet test DocAlchemy.slnx: passed, 31 tests. The ContentUnderstanding and Storage test projects contain no discoverable tests yet.
+  - dotnet build DocAlchemy.slnx: succeeded, 0 warnings and 0 errors.
+  - git diff --check: passed.
+Checks not executed:
+  - No Azure resource access, credential use, deployment, billable requests, or live reachability/authorization tests.
+Open issues: None for Step 04 local acceptance; live endpoint and role checks remain environment work.
+Handoff: Step 04 is done. Infrastructure must provide the documented endpoint/container settings, retain ManagedIdentity defaults, and configure each key mode only when explicitly selected. Steps 05-08 can proceed from the registered SDK clients and validated Analysis/Uploads options; keep Core Azure-free. Stop for manual selection of the next step.
 ```
