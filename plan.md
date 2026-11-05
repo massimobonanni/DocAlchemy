@@ -294,7 +294,7 @@ All steps are initially `pending`; plan preparation does not count as implementa
 | --- | --- | --- | --- | --- |
 | 01 / `step-01-contract` | Verified SDK/API, schemas, model mappings, and access contracts | None | Source-backed research; compatibility reasoning | done |
 | 02 / `step-02-scaffold` | Compiling solution and test scaffolding | 01 | Precise .NET tooling and project setup | done |
-| 03 / `step-03-core` | Core interfaces, recursive models, and result contract | 02 | Domain modeling; type safety; boundary tests | pending |
+| 03 / `step-03-core` | Core interfaces, recursive models, and result contract | 02 | Domain modeling; type safety; boundary tests | done |
 | 04 / `step-04-config` | Validated settings, authentication modes, and DI | 03 | Azure SDK integration; credential correctness | pending |
 | 05 / `step-05-analyzers` | Analyzer management adapter and tests | 04 | API semantics; asynchronous operations | pending |
 | 06 / `step-06-extraction` | Analysis adapter and lossless result mapping | 04 | Complex mapping; polling and failure handling | pending |
@@ -851,3 +851,27 @@ Handoff: <what the next step must know; no automatic execution>
 ```
 
 A step's record must be sufficient for a different model in a new chat to continue from the repository, this plan, and the recorded evidence. If an earlier contract changes, identify dependent steps whose checks need to be rerun before their completion status remains valid.
+
+### Step 03 / `step-03-core`
+
+```text
+Step: 03 / step-03-core
+Status: done
+Development model: not recorded
+Prerequisites checked: Step 02 is done; reviewed sections 4-5 and 9, the Step 02 handoff, the Core project/test scaffolds, and .github/instructions/csharp.instructions.md.
+Files changed: src/DocAlchemy.Core/Interfaces/IAnalyzerService.cs, src/DocAlchemy.Core/Interfaces/IDocumentAnalysisService.cs, src/DocAlchemy.Core/Interfaces/IAnalysisResultStore.cs, src/DocAlchemy.Core/Models/AnalyzerMetadata.cs, src/DocAlchemy.Core/Models/AnalysisContent.cs, src/DocAlchemy.Core/Models/AnalysisResult.cs, src/DocAlchemy.Core/Models/AnalysisStorageReference.cs, src/DocAlchemy.Core/Models/DocumentAnalysisRequest.cs, src/DocAlchemy.Core/Models/ExtractedField.cs, src/DocAlchemy.Core/Models/FieldPath.cs, src/DocAlchemy.Core/Models/ConfidenceThreshold.cs, src/DocAlchemy.Core/Services/AnalysisJson.cs, tests/DocAlchemy.Core.Tests/AnalysisContractTests.cs, src/DocAlchemy.Core/README.md, plan.md.
+Contracts/decisions:
+  - Added SDK-independent asynchronous analyzer, document-analysis, and result-store interfaces. Analyzer creation receives the separately supplied ID and original JSON body; document input is already validated and its caller retains stream ownership; storage returns an opaque reference rather than a URL.
+  - Analyzer metadata, analysis snapshots, content groups, fields, and storage references expose get-only properties; repeated collections use ImmutableArray. The snapshot captures a Guid analysis ID, analyzer ID, threshold, UTC completion time, schemaVersion, and all content items.
+  - Extracted fields retain their service type string, cloned JsonElement value, nullable confidence, and recursive children. JSON null and unknown future types are preserved; an empty result is valid.
+  - Field paths use `/contents/{index}/fields/{escaped-name}`, with `/properties/{escaped-name}` and `/items/{index}` structural segments; names use RFC 6901 escaping.
+  - AnalysisJson serializes camel-case names and explicitly emits nullable properties. ConfidenceThreshold applies strict `<`; null confidence does not warn, and threshold/confidence values must be finite and in `[0, 1]`.
+Checks executed:
+  - `dotnet test tests\DocAlchemy.Core.Tests\DocAlchemy.Core.Tests.csproj`: passed, 13 tests including the Core assembly boundary test.
+  - `dotnet build DocAlchemy.slnx`: succeeded, 0 warnings and 0 errors.
+  - `git diff --check`: passed.
+Checks not executed:
+  - No Azure resource access, credentials, deployments, billable requests, or application/service acceptance checks; those are outside this step.
+Open issues: None for the Step 03 acceptance criteria.
+Handoff: Step 04 may add Azure configuration and DI; keep Core free of Azure SDK and UI dependencies. Use AnalysisResult and AnalysisJson as the normalized persistence contract, preserve captured identity/threshold/time on retries, and use FieldPath for recursive mapper output. Stop here for manual selection of the next step.
+```
