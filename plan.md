@@ -301,7 +301,7 @@ All steps are initially `pending`; plan preparation does not count as implementa
 | 07 / `step-07-storage` | Idempotent Blob persistence and tests | 04 | Persistence consistency; serialization | done |
 | 08 / `step-08-shell` | Accessible Blazor shell and palette | 04 | Blazor UI; CSS; accessibility | done |
 | 09 / `step-09-analyzer-ui` | Complete analyzer-management page | 05, 08 | Interactive forms; component state | done |
-| 10 / `step-10-results-ui` | Recursive results and confidence components | 03, 08 | Recursive UI; exact display semantics | pending |
+| 10 / `step-10-results-ui` | Recursive results and confidence components | 03, 08 | Recursive UI; exact display semantics | done |
 | 11 / `step-11-analysis-ui` | Upload-to-analysis-to-save workflow | 05, 06, 07, 08, 10 | Cross-service state; cancellation; retry correctness | pending |
 | 12 / `step-12-infra-base` | Naming, resource group, monitoring, and storage IaC | 04 | Bicep resource composition | pending |
 | 13 / `step-13-infra-foundry` | Foundry models and Key Vault IaC | 01, 12 | Model deployment contracts; secret handling | pending |
@@ -1027,4 +1027,27 @@ Checks not executed:
   - No browser-based live-service check, full-solution suite, Azure reachability/authentication, or live-service operation; no Azure request was made.
 Open issues: None for Step 09.
 Handoff: Step 10 can reuse the accessible status and palette styles. Step 11 can reuse IAnalyzerService and the analyzer page's explicit operation/error handling patterns. No automatic follow-on work was started.
+```
+
+### Step 10 / `step-10-results-ui`
+
+```text
+Step: 10 / step-10-results-ui
+Status: done
+Development model: not recorded
+Prerequisites checked: Steps 03 and 08 are done; reviewed the Core AnalysisResult/AnalysisContent/ExtractedField/FieldPath/ConfidenceThreshold contracts, the Web shell and palette, Sections 9, 10, and 13, and .github/instructions/csharp.instructions.md.
+Files changed: plan.md, src/DocAlchemy.Web/Components/Shared/AnalysisResults.razor, src/DocAlchemy.Web/Components/Shared/AnalysisResults.razor.css, src/DocAlchemy.Web/Components/Shared/FieldResult.razor, src/DocAlchemy.Web/Components/Shared/FieldResult.razor.css, src/DocAlchemy.Web/Components/Shared/ConfidenceIndicator.razor, src/DocAlchemy.Web/Components/Shared/ConfidenceIndicator.razor.css, src/DocAlchemy.Web/README.md, tests/DocAlchemy.Web.Tests/AnalysisResultsTests.cs.
+Contracts/decisions:
+  - AnalysisResults accepts the existing immutable AnalysisResult snapshot and renders each content item, including empty results and items without fields, with stable result ordering and no analyzer-schema assumptions.
+  - FieldResult recursively displays each field name, stable FieldPath, service type, raw JSON value, optional confidence, and children. Extracted values are rendered only as Razor-encoded text, never as markup.
+  - ConfidenceIndicator uses the snapshot's captured threshold through Core's strict-below ConfidenceThreshold rule. Below-threshold values show an amber decorative icon and visible warning text; equal/above values do not warn; null displays "Not available". Percent text uses invariant formatting.
+  - Scoped responsive styles use the shared palette and keep large JSON values in a bounded scrollable region. The components are intentionally not wired to the /analyze placeholder; step 11 owns workflow integration.
+Checks executed:
+  - `dotnet test tests\DocAlchemy.Web.Tests\DocAlchemy.Web.Tests.csproj --no-restore`: passed all 32 tests, including 3 focused result/confidence component tests covering 0.79, 0.80, 0.81, null confidence, nested objects/arrays, multiple content items, empty results, null values, unknown field types, and safely encoded markup.
+  - `dotnet build src\DocAlchemy.Web\DocAlchemy.Web.csproj --no-restore`: succeeded with 0 warnings and 0 errors.
+  - `git diff --check`: passed.
+Checks not executed:
+  - No full-solution suite, browser workflow, Azure reachability/authentication, or live-service operation; no Azure request was made.
+Open issues: None for the Step 10 acceptance criteria.
+Handoff: Step 11 can pass its completed immutable AnalysisResult directly to AnalysisResults; the components use the captured confidence threshold and require no fixed analyzer schema. Keep analysis submission, upload, saving, workflow state, and service calls in step 11. No automatic follow-on work was started.
 ```

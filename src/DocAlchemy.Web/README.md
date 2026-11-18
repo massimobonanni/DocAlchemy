@@ -40,11 +40,28 @@ Step 08 verification:
 - Contrast checks measured 16.32:1 for white on midnight, 7.01:1 for white on primary blue, 8.61:1 for midnight on warning amber, 6.56:1 for secondary text on the page background, 6.11:1 for success on white, and 6.57:1 for error on white.
 - The visual check used synthetic endpoint settings and made no Azure requests.
 
+Step 10 verification:
+
+- `dotnet test tests\DocAlchemy.Web.Tests\DocAlchemy.Web.Tests.csproj --no-restore` passed all 32 tests, including the three new recursive-results/confidence component tests.
+- No analysis workflow, Azure request, live-service check, or browser workflow check was performed.
+
 ## Analyzer management
 
 The analyzer-management page uses `IAnalyzerService` for list, create, and delete operations. Create requests require a separately entered ID and a valid JSON object with `baseAnalyzerId`; uploaded JSON is sent unchanged, and the configured upload-size limit is enforced before submission. Confidence settings are inspected without changing the definition. Built-in, read-only, and delete-unsupported analyzers cannot be deleted; mutable analyzers require typing their exact ID to confirm.
 
 The bUnit component tests use an in-memory service and synthetic JSON files. They cover list metadata, create/delete and refresh flows, protected analyzers, JSON/ID/size validation, confidence warnings, duplicate-submission protection, and service failures; they make no Azure requests.
+
+## Recursive result components
+
+`AnalysisResults` renders an immutable `AnalysisResult` snapshot without depending on an analyzer-specific schema. It displays each content item and recursively renders each field's name, stable path, service type, JSON value, and nested object properties or array items. Values, paths, and other extracted content are rendered as encoded text; the components do not interpret extracted strings as HTML. Large JSON values remain readable in a bounded, scrollable value region.
+
+`ConfidenceIndicator` uses the snapshot's captured threshold and the Core strict-below rule: values below the threshold show an amber icon and visible “Low confidence” text, values at or above it do not warn, and missing values show “Not available.” An empty result and a content item with no fields each have explicit empty states. These shared components are not connected to `/analyze`; that remains the responsibility of the later analysis-workflow step.
+
+The focused bUnit tests cover confidence values `0.79`, `0.80`, `0.81`, and null at a threshold of `0.80`; recursive objects and arrays; multiple content items; empty results and null values; unknown field types; and encoded markup. Run them with:
+
+```powershell
+dotnet test tests\DocAlchemy.Web.Tests\DocAlchemy.Web.Tests.csproj
+```
 
 ## Configuration contract
 

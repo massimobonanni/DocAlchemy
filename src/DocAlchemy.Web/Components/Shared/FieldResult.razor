@@ -1,0 +1,45 @@
+@using DocAlchemy.Core.Models
+
+<article class="field-result">
+    <header class="field-result__header">
+        <h4>@Field.Name</h4>
+        <span class="field-result__type">@Field.Type</span>
+    </header>
+
+    <dl class="field-result__metadata">
+        <div>
+            <dt>Path</dt>
+            <dd><code>@Field.Path</code></dd>
+        </div>
+        <div>
+            <dt>Value</dt>
+            <dd><pre class="field-result__value"><code>@Field.Value.GetRawText()</code></pre></dd>
+        </div>
+        <div>
+            <dt>Confidence</dt>
+            <dd><ConfidenceIndicator Confidence="Field.Confidence" Threshold="Threshold" /></dd>
+        </div>
+    </dl>
+
+    @if (!Field.Children.IsEmpty)
+    {
+        <ul class="field-result__children" aria-label="@($"Children of {Field.Name}")">
+            @foreach (var child in Field.Children)
+            {
+                <li @key="child.Path">
+                    <FieldResult Field="child" Threshold="Threshold" />
+                </li>
+            }
+        </ul>
+    }
+</article>
+
+@code {
+    /// <summary>Gets or sets the extracted field and its nested children.</summary>
+    [Parameter, EditorRequired]
+    public ExtractedField Field { get; set; } = null!;
+
+    /// <summary>Gets or sets the threshold captured by the analysis.</summary>
+    [Parameter, EditorRequired]
+    public double Threshold { get; set; }
+}

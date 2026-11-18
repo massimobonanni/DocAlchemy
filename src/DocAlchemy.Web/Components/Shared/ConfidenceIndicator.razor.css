@@ -1,0 +1,19 @@
+.confidence {
+    align-items: center;
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    overflow-wrap: anywhere;
+}
+
+.confidence--warning {
+    color: var(--palette-midnight);
+    font-weight: 700;
+}
+
+.confidence__icon {
+    fill: var(--palette-warning);
+    flex: 0 0 1rem;
+    height: 1rem;
+    width: 1rem;
+}

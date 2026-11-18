@@ -1,0 +1,46 @@
+@using DocAlchemy.Core.Models
+
+<section class="analysis-results" aria-labelledby="analysis-results-title">
+    <h2 id="analysis-results-title">Analysis results</h2>
+
+    @if (Result is null)
+    {
+        <p class="results-empty">No analysis result is available.</p>
+    }
+    else if (Result.Contents.IsEmpty)
+    {
+        <p class="results-empty">The analysis completed without content items.</p>
+    }
+    else
+    {
+        <div class="results-list">
+            @foreach (var content in Result.Contents)
+            {
+                <article class="result-content" @key="content.Index">
+                    <h3>Content item @(content.Index + 1)</h3>
+                    @if (content.Fields.IsEmpty)
+                    {
+                        <p class="results-empty">No fields were extracted from this content item.</p>
+                    }
+                    else
+                    {
+                        <ul class="field-list" aria-label="@($"Fields in content item {content.Index + 1}")">
+                            @foreach (var field in content.Fields)
+                            {
+                                <li @key="field.Path">
+                                    <FieldResult Field="field" Threshold="Result.ConfidenceThreshold" />
+                                </li>
+                            }
+                        </ul>
+                    }
+                </article>
+            }
+        </div>
+    }
+</section>
+
+@code {
+    /// <summary>Gets or sets the immutable analysis snapshot to display.</summary>
+    [Parameter]
+    public AnalysisResult? Result { get; set; }
+}
