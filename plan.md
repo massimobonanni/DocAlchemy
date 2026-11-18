@@ -300,7 +300,7 @@ All steps are initially `pending`; plan preparation does not count as implementa
 | 06 / `step-06-extraction` | Analysis adapter and lossless result mapping | 04 | Complex mapping; polling and failure handling | done |
 | 07 / `step-07-storage` | Idempotent Blob persistence and tests | 04 | Persistence consistency; serialization | done |
 | 08 / `step-08-shell` | Accessible Blazor shell and palette | 04 | Blazor UI; CSS; accessibility | done |
-| 09 / `step-09-analyzer-ui` | Complete analyzer-management page | 05, 08 | Interactive forms; component state | pending |
+| 09 / `step-09-analyzer-ui` | Complete analyzer-management page | 05, 08 | Interactive forms; component state | done |
 | 10 / `step-10-results-ui` | Recursive results and confidence components | 03, 08 | Recursive UI; exact display semantics | pending |
 | 11 / `step-11-analysis-ui` | Upload-to-analysis-to-save workflow | 05, 06, 07, 08, 10 | Cross-service state; cancellation; retry correctness | pending |
 | 12 / `step-12-infra-base` | Naming, resource group, monitoring, and storage IaC | 04 | Bicep resource composition | pending |
@@ -1003,4 +1003,28 @@ Checks not executed:
   - No full-solution suite, Azure reachability/authentication, or live-service checks; those are outside this shell step and no Azure service was invoked.
 Open issues: None for Step 08. The analyzer and analysis destinations intentionally remain placeholders for their later steps.
 Handoff: Step 09 can replace the Analyzers placeholder and reuse the responsive shell, selected navigation, palette tokens, and StatusMessage component. Step 10 can reuse the same status and palette primitives. No automatic follow-on work was started.
+```
+
+### Step 09 / `step-09-analyzer-ui`
+
+```text
+Step: 09 / step-09-analyzer-ui
+Status: done
+Development model: not recorded
+Prerequisites checked: Steps 05 and 08 are done; reviewed IAnalyzerService, AnalyzerMetadata, the existing analyzer adapter and Web shell, Sections 9, 10, and 13, and .github/instructions/csharp.instructions.md.
+Files changed: plan.md, src/DocAlchemy.Web/Components/Pages/Analyzers.razor, src/DocAlchemy.Web/Components/Pages/Analyzers.razor.css, src/DocAlchemy.Web/README.md, tests/DocAlchemy.Web.Tests/DocAlchemy.Web.Tests.csproj, tests/DocAlchemy.Web.Tests/AnalyzerManagementTests.cs.
+Contracts/decisions:
+  - The page uses IAnalyzerService for listing, creation, and deletion, displays available metadata and supported operations, and exposes loading, empty, refresh, and error states.
+  - Analyzer IDs are entered separately and validated against the service's 1-64 ASCII-character rule. Imported files must be UTF-8 JSON objects with a non-empty baseAnalyzerId and no analyzerId property. The original JSON string is passed to CreateAsync unchanged; it is never deserialized and reserialized for submission.
+  - File size is bounded by Uploads:MaxDocumentBytes. The UI inspects global and per-field confidence settings to warn without changing the imported definition.
+  - Delete controls appear only for mutable analyzers with a reported delete operation. Deletion requires typing the exact analyzer ID. Busy guards prevent duplicate mutations; component disposal cancels outstanding service work, and service/refresh failures are visible without success-shaped fallback states.
+  - Added bUnit for realistic component event tests using an in-memory IAnalyzerService; test files and service doubles do not call Azure.
+Checks executed:
+  - dotnet build src\\DocAlchemy.Web\\DocAlchemy.Web.csproj --no-restore: succeeded with 0 warnings and 0 errors.
+  - dotnet test tests\\DocAlchemy.Web.Tests\\DocAlchemy.Web.Tests.csproj --no-restore: passed all 29 tests, including analyzer list metadata and loading/empty/error states, refresh, unchanged JSON create, duplicate submission, malformed JSON and size limits, ID validation, confidence warnings, supported/protected deletion, exact-ID confirmation, and create/delete failures.
+  - git diff --check: passed.
+Checks not executed:
+  - No browser-based live-service check, full-solution suite, Azure reachability/authentication, or live-service operation; no Azure request was made.
+Open issues: None for Step 09.
+Handoff: Step 10 can reuse the accessible status and palette styles. Step 11 can reuse IAnalyzerService and the analyzer page's explicit operation/error handling patterns. No automatic follow-on work was started.
 ```

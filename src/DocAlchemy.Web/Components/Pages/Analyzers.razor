@@ -1,4 +1,15 @@
-﻿@page "/analyzers"
+@page "/analyzers"
+@implements IDisposable
+@using System.Collections.Immutable
+@using System.Text
+@using System.Text.Json
+@using Azure
+@using DocAlchemy.Core.Interfaces
+@using DocAlchemy.Core.Models
+@using DocAlchemy.Web.Configuration
+@using Microsoft.Extensions.Options
+@inject IAnalyzerService AnalyzerService
+@inject IOptions<UploadsOptions> UploadOptions
 
 <PageTitle>Analyzers | DocAlchemy</PageTitle>
 
@@ -7,5 +18,603 @@
     <p>Manage the definitions used to understand documents.</p>
 </section>
 
-<StatusMessage Kind="StatusMessageKind.Information"
-               Message="Analyzer management is not implemented in this shell. No service is contacted." />
+<section class="analyzer-section" aria-labelledby="analyzer-list-title">
+    <div class="section-heading">
+        <div>
+            <h2 id="analyzer-list-title">Available analyzers</h2>
+            <p>Review analyzer capabilities or refresh the latest service state.</p>
+        </div>
+        <button id="refresh-analyzers"
+                class="button button--secondary"
+                type="button"
+                @onclick="RefreshAsync"
+                disabled="@(isRefreshing || isCreating || isDeleting)">
+            Refresh
+        </button>
+    </div>
+
+    @if (isRefreshing && !hasLoaded)
+    {
+        <StatusMessage Kind="StatusMessageKind.Loading" Message="Loading analyzers." />
+    }
+    else if (hasLoaded && analyzers.IsEmpty)
+    {
+        <p class="empty-state">No analyzers are available yet. Import a JSON definition below to create one.</p>
+    }
+    else if (!analyzers.IsEmpty)
+    {
+        <div class="analyzer-list" aria-label="Available analyzers">
+            @foreach (var analyzer in analyzers)
+            {
+                <article class="analyzer-card" @key="analyzer.Id">
+                    <div class="analyzer-card__header">
+                        <div>
+                            <h3>@analyzer.Id</h3>
+                            <p class="analyzer-card__description">
+                                @(string.IsNullOrWhiteSpace(analyzer.Description)
+                                    ? "No description provided."
+                                    : analyzer.Description)
+                            </p>
+                        </div>
+                        @if (analyzer.IsBuiltIn || analyzer.IsReadOnly)
+                        {
+                            <span class="analyzer-badge">Read-only</span>
+                        }
+                    </div>
+
+                    <dl class="analyzer-metadata">
+                        <div>
+                            <dt>Modality</dt>
+                            <dd>@(analyzer.Modality ?? "Not reported")</dd>
+                        </div>
+                        <div>
+                            <dt>Status</dt>
+                            <dd>@(analyzer.Status ?? "Not reported")</dd>
+                        </div>
+                        <div>
+                            <dt>Supported operations</dt>
+                            <dd>
+                                @(analyzer.SupportedOperations.IsEmpty
+                                    ? "Not reported"
+                                    : string.Join(", ", analyzer.SupportedOperations))
+                            </dd>
+                        </div>
+                    </dl>
+
+                    @if (analyzer.HasConfidenceWarning)
+                    {
+                        <StatusMessage Kind="StatusMessageKind.Warning"
+                                       Message="Confidence scores may be unavailable for some fields." />
+                    }
+
+                    @if (CanDelete(analyzer))
+                    {
+                        @if (string.Equals(pendingDeleteId, analyzer.Id, StringComparison.Ordinal))
+                        {
+                            <div class="delete-confirmation" aria-labelledby="delete-confirmation-title">
+                                <h4 id="delete-confirmation-title">Confirm analyzer deletion</h4>
+                                <p>This cannot be undone. Type <strong>@analyzer.Id</strong> to confirm.</p>
+                                <label for="delete-confirmation-input">Analyzer ID</label>
+                                <input id="delete-confirmation-input"
+                                       @bind="deleteConfirmationText"
+                                       @bind:event="oninput"
+                                       autocomplete="off"
+                                       disabled="@isDeleting" />
+                                <div class="button-row">
+                                    <button id="confirm-delete-analyzer"
+                                            class="button button--danger"
+                                            type="button"
+                                            @onclick="DeleteAsync"
+                                            disabled="@(isRefreshing || isCreating || isDeleting || !string.Equals(deleteConfirmationText, analyzer.Id, StringComparison.Ordinal))">
+                                        Delete analyzer
+                                    </button>
+                                    <button class="button button--secondary"
+                                            type="button"
+                                            @onclick="CancelDelete"
+                                            disabled="@isDeleting">
+                                        Cancel
+                                    </button>
+                                </div>
+                            </div>
+                        }
+                        else
+                        {
+                            <button id="@($"delete-analyzer-{analyzer.Id}")"
+                                    class="button button--danger"
+                                    type="button"
+                                    @onclick="() => BeginDelete(analyzer.Id)"
+                                    disabled="@(isRefreshing || isCreating || isDeleting)">
+                                Delete
+                            </button>
+                        }
+                    }
+                </article>
+            }
+        </div>
+    }
+</section>
+
+<section class="analyzer-section" aria-labelledby="create-analyzer-title">
+    <div class="section-heading">
+        <div>
+            <h2 id="create-analyzer-title">Import analyzer definition</h2>
+            <p>Upload a create-request JSON file and provide its analyzer ID separately.</p>
+        </div>
+    </div>
+
+    <form class="analyzer-form" @onsubmit="CreateAsync" @onsubmit:preventDefault>
+        <fieldset disabled="@(isCreating || isDeleting)">
+            <div class="form-field">
+                <label for="analyzer-id">Analyzer ID</label>
+                <input id="analyzer-id"
+                       @bind="analyzerId"
+                       @bind:event="oninput"
+                       aria-describedby="analyzer-id-help analyzer-id-error"
+                       autocomplete="off" />
+                <p id="analyzer-id-help" class="field-help">Use 1–64 ASCII letters, digits, periods, underscores, or hyphens.</p>
+                @if (!string.IsNullOrEmpty(analyzerIdError))
+                {
+                    <p id="analyzer-id-error" class="field-error" role="alert">@analyzerIdError</p>
+                }
+            </div>
+
+            <div class="form-field">
+                <label for="analyzer-definition">Analyzer create-request JSON</label>
+                <InputFile id="analyzer-definition"
+                           OnChange="ReadDefinitionAsync"
+                           accept=".json,application/json"
+                           aria-describedby="analyzer-definition-help analyzer-definition-error" />
+                <p id="analyzer-definition-help" class="field-help">
+                    JSON must be an object with a non-empty baseAnalyzerId and must not contain analyzerId.
+                    Maximum size: @FormatBytes(MaximumDefinitionBytes).
+                </p>
+                @if (!string.IsNullOrEmpty(selectedFileName))
+                {
+                    <p class="field-help">Selected file: @selectedFileName</p>
+                }
+                @if (!string.IsNullOrEmpty(definitionError))
+                {
+                    <p id="analyzer-definition-error" class="field-error" role="alert">@definitionError</p>
+                }
+            </div>
+        </fieldset>
+
+        @if (hasConfidenceWarning)
+        {
+            <StatusMessage Kind="StatusMessageKind.Warning"
+                           Message="Confidence estimation is not enabled for every field in this definition. The uploaded JSON will be sent unchanged; some analysis results may show confidence as Not available." />
+        }
+
+        <button id="create-analyzer"
+                class="button button--primary"
+                type="submit"
+                disabled="@(isCreating || isDeleting || isRefreshing)">
+            @(isCreating ? "Creating analyzer…" : "Create analyzer")
+        </button>
+    </form>
+</section>
+
+@if (statusKind is StatusMessageKind status)
+{
+    <StatusMessage Kind="status" Message="@statusMessage" />
+}
+
+@code {
+    private static readonly UTF8Encoding StrictUtf8 = new(false, true);
+
+    private readonly CancellationTokenSource lifetimeCancellation = new();
+    private ImmutableArray<AnalyzerMetadata> analyzers = ImmutableArray<AnalyzerMetadata>.Empty;
+    private long MaximumDefinitionBytes => UploadOptions.Value.MaxDocumentBytes;
+    private string analyzerId = string.Empty;
+    private string? analyzerIdError;
+    private string? definitionError;
+    private string? selectedFileName;
+    private string? definitionJson;
+    private string? pendingDeleteId;
+    private string deleteConfirmationText = string.Empty;
+    private string statusMessage = string.Empty;
+    private StatusMessageKind? statusKind;
+    private bool hasConfidenceWarning;
+    private bool hasLoaded;
+    private bool isRefreshing;
+    private bool isCreating;
+    private bool isDeleting;
+    private bool isDisposed;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await RefreshAsync();
+    }
+
+    private async Task RefreshAsync()
+    {
+        if (isRefreshing || isCreating || isDeleting || isDisposed)
+        {
+            return;
+        }
+
+        isRefreshing = true;
+        SetStatus(StatusMessageKind.Loading, "Refreshing analyzers.");
+        try
+        {
+            analyzers = await AnalyzerService.ListAsync(lifetimeCancellation.Token);
+            hasLoaded = true;
+            SetStatus(null, string.Empty);
+        }
+        catch (OperationCanceledException) when (lifetimeCancellation.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception)
+        {
+            SetStatus(StatusMessageKind.Error, $"Could not load analyzers: {exception.Message}");
+        }
+        finally
+        {
+            isRefreshing = false;
+        }
+    }
+
+    private async Task ReadDefinitionAsync(InputFileChangeEventArgs args)
+    {
+        definitionJson = null;
+        definitionError = null;
+        selectedFileName = null;
+        hasConfidenceWarning = false;
+
+        var file = args.File;
+        if (file is null)
+        {
+            definitionError = "Select a JSON definition file.";
+            return;
+        }
+
+        selectedFileName = file.Name;
+        if (!string.Equals(Path.GetExtension(file.Name), ".json", StringComparison.OrdinalIgnoreCase))
+        {
+            definitionError = "Select a file with the .json extension.";
+            return;
+        }
+
+        if (file.Size > MaximumDefinitionBytes)
+        {
+            definitionError = $"The selected file exceeds the {FormatBytes(MaximumDefinitionBytes)} limit.";
+            return;
+        }
+
+        try
+        {
+            await using var stream = file.OpenReadStream(
+                MaximumDefinitionBytes,
+                lifetimeCancellation.Token);
+            using var buffer = new MemoryStream();
+            await stream.CopyToAsync(buffer, lifetimeCancellation.Token);
+            var rawJson = StrictUtf8.GetString(buffer.GetBuffer(), 0, checked((int)buffer.Length));
+
+            using var document = JsonDocument.Parse(rawJson);
+            ValidateCreateDefinition(document.RootElement);
+
+            definitionJson = rawJson;
+            hasConfidenceWarning = HasConfidenceWarning(document.RootElement);
+        }
+        catch (JsonException)
+        {
+            definitionError = "The selected file is not valid JSON.";
+        }
+        catch (DecoderFallbackException)
+        {
+            definitionError = "The selected file must contain valid UTF-8 JSON.";
+        }
+        catch (InvalidOperationException exception)
+        {
+            definitionError = exception.Message;
+        }
+        catch (IOException exception)
+        {
+            definitionError = $"Could not read the selected file: {exception.Message}";
+        }
+        catch (OperationCanceledException) when (lifetimeCancellation.IsCancellationRequested)
+        {
+        }
+    }
+
+    private async Task CreateAsync()
+    {
+        analyzerIdError = null;
+        if (!IsValidAnalyzerId(analyzerId))
+        {
+            analyzerIdError = "Enter an ID containing 1–64 ASCII letters, digits, periods, underscores, or hyphens.";
+            return;
+        }
+
+        if (definitionJson is null)
+        {
+            definitionError ??= "Select a valid analyzer create-request JSON file.";
+            return;
+        }
+
+        if (isCreating || isDeleting || isRefreshing || isDisposed)
+        {
+            return;
+        }
+
+        isCreating = true;
+        SetStatus(StatusMessageKind.Loading, $"Creating analyzer {analyzerId}.");
+        try
+        {
+            await AnalyzerService.CreateAsync(
+                analyzerId,
+                definitionJson,
+                lifetimeCancellation.Token);
+
+            var createdId = analyzerId;
+            analyzerId = string.Empty;
+            definitionJson = null;
+            selectedFileName = null;
+            hasConfidenceWarning = false;
+            definitionError = null;
+
+            await RefreshAfterMutationAsync(
+                $"Analyzer {createdId} was created.",
+                $"Analyzer {createdId} was created, but the analyzer list could not be refreshed.");
+        }
+        catch (OperationCanceledException) when (lifetimeCancellation.IsCancellationRequested)
+        {
+        }
+        catch (RequestFailedException exception) when (exception.Status == 409)
+        {
+            SetStatus(
+                StatusMessageKind.Error,
+                $"Analyzer {analyzerId} already exists. Choose a different ID; existing analyzers are never replaced.");
+        }
+        catch (Exception exception)
+        {
+            SetStatus(StatusMessageKind.Error, $"Could not create analyzer: {exception.Message}");
+        }
+        finally
+        {
+            isCreating = false;
+        }
+    }
+
+    private void BeginDelete(string id)
+    {
+        pendingDeleteId = id;
+        deleteConfirmationText = string.Empty;
+        SetStatus(null, string.Empty);
+    }
+
+    private void CancelDelete()
+    {
+        pendingDeleteId = null;
+        deleteConfirmationText = string.Empty;
+    }
+
+    private async Task DeleteAsync()
+    {
+        var id = pendingDeleteId;
+        if (id is null ||
+            !string.Equals(deleteConfirmationText, id, StringComparison.Ordinal) ||
+            isCreating ||
+            isDeleting ||
+            isRefreshing ||
+            isDisposed)
+        {
+            return;
+        }
+
+        isDeleting = true;
+        SetStatus(StatusMessageKind.Loading, $"Deleting analyzer {id}.");
+        try
+        {
+            await AnalyzerService.DeleteAsync(id, lifetimeCancellation.Token);
+            pendingDeleteId = null;
+            deleteConfirmationText = string.Empty;
+            await RefreshAfterMutationAsync(
+                $"Analyzer {id} was deleted.",
+                $"Analyzer {id} was deleted, but the analyzer list could not be refreshed.");
+        }
+        catch (OperationCanceledException) when (lifetimeCancellation.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception)
+        {
+            SetStatus(StatusMessageKind.Error, $"Could not delete analyzer {id}: {exception.Message}");
+        }
+        finally
+        {
+            isDeleting = false;
+        }
+    }
+
+    private async Task RefreshAfterMutationAsync(string successMessage, string refreshFailureMessage)
+    {
+        isRefreshing = true;
+        try
+        {
+            analyzers = await AnalyzerService.ListAsync(lifetimeCancellation.Token);
+            hasLoaded = true;
+            SetStatus(StatusMessageKind.Success, successMessage);
+        }
+        catch (OperationCanceledException) when (lifetimeCancellation.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception)
+        {
+            SetStatus(StatusMessageKind.Error, $"{refreshFailureMessage} {exception.Message}");
+        }
+        finally
+        {
+            isRefreshing = false;
+        }
+    }
+
+    private void SetStatus(StatusMessageKind? kind, string message)
+    {
+        if (isDisposed)
+        {
+            return;
+        }
+
+        statusKind = kind;
+        statusMessage = message;
+    }
+
+    private static bool CanDelete(AnalyzerMetadata analyzer) =>
+        !analyzer.IsBuiltIn &&
+        !analyzer.IsReadOnly &&
+        analyzer.SupportedOperations.Contains("delete", StringComparer.OrdinalIgnoreCase);
+
+    private static bool IsValidAnalyzerId(string id) =>
+        id.Length is >= 1 and <= 64 &&
+        id.All(character =>
+            character is >= 'a' and <= 'z' or
+                >= 'A' and <= 'Z' or
+                >= '0' and <= '9' or '.' or '_' or '-');
+
+    private static void ValidateCreateDefinition(JsonElement definition)
+    {
+        if (definition.ValueKind is not JsonValueKind.Object)
+        {
+            throw new InvalidOperationException("The analyzer definition must be a JSON object.");
+        }
+
+        if (definition.EnumerateObject().Any(property =>
+            string.Equals(property.Name, "analyzerId", StringComparison.OrdinalIgnoreCase)))
+        {
+            throw new InvalidOperationException(
+                "Provide the analyzer ID separately; analyzerId is not a create-request body property.");
+        }
+
+        if (!definition.TryGetProperty("baseAnalyzerId", out var baseAnalyzerId) ||
+            baseAnalyzerId.ValueKind is not JsonValueKind.String ||
+            string.IsNullOrWhiteSpace(baseAnalyzerId.GetString()))
+        {
+            throw new InvalidOperationException(
+                "The analyzer definition must include a non-empty baseAnalyzerId.");
+        }
+    }
+
+    private static bool HasConfidenceWarning(JsonElement definition)
+    {
+        var confidenceEnabled = definition.TryGetProperty("config", out var config) &&
+            config.ValueKind is JsonValueKind.Object &&
+            config.TryGetProperty("estimateFieldSourceAndConfidence", out var setting) &&
+            setting.ValueKind is JsonValueKind.True;
+
+        if (!definition.TryGetProperty("fieldSchema", out var schema) ||
+            schema.ValueKind is not JsonValueKind.Object ||
+            !schema.TryGetProperty("fields", out var fields))
+        {
+            return !confidenceEnabled;
+        }
+
+        var foundField = false;
+        return FieldsHaveConfidenceWarning(fields, confidenceEnabled, ref foundField) ||
+            !foundField && !confidenceEnabled;
+    }
+
+    private static bool FieldsHaveConfidenceWarning(
+        JsonElement fields,
+        bool analyzerLevelEnabled,
+        ref bool foundField)
+    {
+        if (fields.ValueKind is JsonValueKind.Object)
+        {
+            foreach (var field in fields.EnumerateObject())
+            {
+                if (FieldHasConfidenceWarning(field.Value, analyzerLevelEnabled, ref foundField))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        if (fields.ValueKind is JsonValueKind.Array)
+        {
+            foreach (var field in fields.EnumerateArray())
+            {
+                if (FieldHasConfidenceWarning(field, analyzerLevelEnabled, ref foundField))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool FieldHasConfidenceWarning(
+        JsonElement field,
+        bool analyzerLevelEnabled,
+        ref bool foundField)
+    {
+        if (field.ValueKind is not JsonValueKind.Object)
+        {
+            return true;
+        }
+
+        foundField = true;
+        var enabled = field.TryGetProperty("estimateSourceAndConfidence", out var overrideSetting)
+            ? overrideSetting.ValueKind switch
+            {
+                JsonValueKind.True => true,
+                JsonValueKind.False => false,
+                JsonValueKind.Null => analyzerLevelEnabled,
+                _ => false
+            }
+            : analyzerLevelEnabled;
+        if (!enabled)
+        {
+            return true;
+        }
+
+        foreach (var nestedName in new[] { "fields", "properties" })
+        {
+            if (field.TryGetProperty(nestedName, out var nestedFields) &&
+                FieldsHaveConfidenceWarning(nestedFields, analyzerLevelEnabled, ref foundField))
+            {
+                return true;
+            }
+        }
+
+        if (field.TryGetProperty("itemDefinition", out var itemDefinition) &&
+            itemDefinition.ValueKind is not JsonValueKind.Null &&
+            FieldHasConfidenceWarning(itemDefinition, analyzerLevelEnabled, ref foundField))
+        {
+            return true;
+        }
+
+        if (field.TryGetProperty("items", out var items))
+        {
+            if (items.ValueKind is JsonValueKind.Object &&
+                FieldHasConfidenceWarning(items, analyzerLevelEnabled, ref foundField))
+            {
+                return true;
+            }
+
+            if (items.ValueKind is JsonValueKind.Array &&
+                FieldsHaveConfidenceWarning(items, analyzerLevelEnabled, ref foundField))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static string FormatBytes(long bytes) =>
+        bytes is >= 1_048_576
+            ? $"{bytes / 1_048_576.0:0.#} MiB"
+            : $"{bytes:N0} bytes";
+
+    public void Dispose()
+    {
+        isDisposed = true;
+        lifetimeCancellation.Cancel();
+        lifetimeCancellation.Dispose();
+    }
+}

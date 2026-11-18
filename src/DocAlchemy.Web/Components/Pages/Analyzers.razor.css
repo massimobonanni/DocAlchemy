@@ -1,0 +1,226 @@
+.analyzer-section {
+    margin-top: 2rem;
+}
+
+.section-heading,
+.analyzer-card__header {
+    align-items: flex-start;
+    display: flex;
+    gap: 1rem;
+    justify-content: space-between;
+}
+
+.section-heading h2 {
+    font-size: 1.55rem;
+    margin: 0 0 0.4rem;
+}
+
+.section-heading p,
+.analyzer-card__description,
+.field-help {
+    color: var(--palette-secondary);
+    line-height: 1.5;
+    margin: 0;
+}
+
+.analyzer-list {
+    display: grid;
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.analyzer-card,
+.analyzer-form,
+.empty-state {
+    background: var(--palette-surface);
+    border: 1px solid var(--palette-border);
+    border-radius: 0.75rem;
+    box-shadow: 0 0.3rem 1rem rgba(1, 29, 78, 0.05);
+    padding: 1.25rem;
+}
+
+.analyzer-card h3 {
+    font-size: 1.15rem;
+    margin: 0 0 0.4rem;
+    overflow-wrap: anywhere;
+}
+
+.analyzer-badge {
+    background: var(--palette-information);
+    border-radius: 999px;
+    color: var(--palette-midnight);
+    flex: 0 0 auto;
+    font-size: 0.85rem;
+    font-weight: 700;
+    padding: 0.35rem 0.7rem;
+}
+
+.analyzer-metadata {
+    display: grid;
+    gap: 0.9rem 1.5rem;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    margin: 1.25rem 0;
+}
+
+.analyzer-metadata div {
+    min-width: 0;
+}
+
+.analyzer-metadata dt,
+.form-field label,
+.delete-confirmation label {
+    font-weight: 700;
+}
+
+.analyzer-metadata dd {
+    margin: 0.25rem 0 0;
+    overflow-wrap: anywhere;
+}
+
+.analyzer-form {
+    display: grid;
+    gap: 1.25rem;
+    margin-top: 1rem;
+    max-width: 52rem;
+}
+
+.analyzer-form fieldset {
+    border: 0;
+    display: grid;
+    gap: 1.25rem;
+    margin: 0;
+    min-width: 0;
+    padding: 0;
+}
+
+.form-field {
+    display: grid;
+    gap: 0.45rem;
+}
+
+.form-field input:not([type="file"]),
+.delete-confirmation input {
+    border: 1px solid var(--palette-border);
+    border-radius: 0.35rem;
+    color: var(--palette-midnight);
+    font: inherit;
+    min-height: 2.75rem;
+    padding: 0.55rem 0.7rem;
+    width: 100%;
+}
+
+.form-field input[type="file"] {
+    font: inherit;
+    max-width: 100%;
+}
+
+.form-field input:focus-visible,
+.delete-confirmation input:focus-visible {
+    outline: 3px solid var(--palette-primary);
+    outline-offset: 2px;
+}
+
+.field-help {
+    font-size: 0.92rem;
+}
+
+.field-error {
+    color: var(--palette-error);
+    font-weight: 650;
+    margin: 0;
+}
+
+.button,
+.button-row {
+    align-items: center;
+    display: inline-flex;
+    gap: 0.65rem;
+}
+
+.button {
+    border: 2px solid transparent;
+    border-radius: 0.4rem;
+    cursor: pointer;
+    font: inherit;
+    font-weight: 700;
+    justify-content: center;
+    min-height: 2.65rem;
+    padding: 0.55rem 0.9rem;
+}
+
+.button:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.button--primary {
+    background: var(--palette-primary);
+    color: var(--palette-surface);
+    justify-self: start;
+}
+
+.button--secondary {
+    background: var(--palette-surface);
+    border-color: var(--palette-primary);
+    color: var(--palette-primary);
+}
+
+.button--danger {
+    background: var(--palette-error);
+    color: var(--palette-surface);
+}
+
+.empty-state {
+    color: var(--palette-secondary);
+    line-height: 1.5;
+    margin-top: 1rem;
+    max-width: 52rem;
+}
+
+.delete-confirmation {
+    background: var(--palette-page);
+    border: 1px solid var(--palette-border);
+    border-radius: 0.55rem;
+    display: grid;
+    gap: 0.65rem;
+    margin-top: 1rem;
+    max-width: 32rem;
+    padding: 1rem;
+}
+
+.delete-confirmation h4,
+.delete-confirmation p {
+    margin: 0;
+}
+
+.delete-confirmation .button-row {
+    margin-top: 0.35rem;
+}
+
+@media (max-width: 44rem) {
+    .section-heading {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .section-heading .button {
+        align-self: flex-start;
+    }
+
+    .analyzer-metadata {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .analyzer-card__header {
+        flex-direction: column;
+    }
+
+    .button-row {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .button-row .button {
+        width: 100%;
+    }
+}

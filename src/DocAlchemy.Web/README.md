@@ -4,7 +4,7 @@ The .NET 10 Blazor Web App using Interactive Server rendering. It composes the C
 
 ## Accessible shell
 
-The shared responsive shell provides the `Analyzers` and `Analyze document` destinations, a skip link, visible keyboard focus, a main-content landmark, and reduced-motion support. Those routes are presentation-only placeholders: analyzer management, file upload, and analysis are implemented in later steps. Visiting the shell does not call Azure.
+The shared responsive shell provides the `Analyzers` and `Analyze document` destinations, a skip link, visible keyboard focus, a main-content landmark, and reduced-motion support. The `/analyzers` page lists analyzer metadata, supports refresh, and imports analyzer create-request JSON with a separately entered ID. The uploaded JSON is validated but not reserialized or modified, and the upload is bounded by `Uploads:MaxDocumentBytes` (20 MiB by default). Deletion is offered only for mutable analyzers that report the `delete` operation, and requires typing the analyzer ID to confirm. Loading this page invokes the configured analyzer service; `/analyze` remains a placeholder until the analysis workflow step.
 
 The shared `StatusMessage` component uses visible state labels as well as color, announces routine status politely, and announces errors assertively. Dynamic messages render as encoded text. The CSS palette tokens match Section 7 of the repository plan:
 
@@ -31,7 +31,7 @@ dotnet build src\DocAlchemy.Web\DocAlchemy.Web.csproj
 dotnet test tests\DocAlchemy.Web.Tests\DocAlchemy.Web.Tests.csproj
 ```
 
-For an isolated local browser check without Azure configuration, provide syntactically valid synthetic HTTPS endpoints as process-local environment variables before starting the Web project. The clients are composed locally; the shell does not make service requests. Do not use real credentials for this visual check.
+For an isolated shell browser check without Azure configuration, provide syntactically valid synthetic HTTPS endpoints as process-local environment variables before starting the Web project. The home page and `/analyze` placeholder do not make service requests. Opening `/analyzers` calls the configured analyzer service; use that route only when a configured service and authorized credentials are intentionally available. Do not use real credentials for a shell-only visual check.
 
 Step 08 verification:
 
@@ -39,6 +39,12 @@ Step 08 verification:
 - Browser checks confirmed the home, Analyzers, and Analyze document routes; keyboard focus and the skip link; responsive navigation/cards at a 375px viewport with no horizontal overflow; and all 13 computed palette values.
 - Contrast checks measured 16.32:1 for white on midnight, 7.01:1 for white on primary blue, 8.61:1 for midnight on warning amber, 6.56:1 for secondary text on the page background, 6.11:1 for success on white, and 6.57:1 for error on white.
 - The visual check used synthetic endpoint settings and made no Azure requests.
+
+## Analyzer management
+
+The analyzer-management page uses `IAnalyzerService` for list, create, and delete operations. Create requests require a separately entered ID and a valid JSON object with `baseAnalyzerId`; uploaded JSON is sent unchanged, and the configured upload-size limit is enforced before submission. Confidence settings are inspected without changing the definition. Built-in, read-only, and delete-unsupported analyzers cannot be deleted; mutable analyzers require typing their exact ID to confirm.
+
+The bUnit component tests use an in-memory service and synthetic JSON files. They cover list metadata, create/delete and refresh flows, protected analyzers, JSON/ID/size validation, confidence warnings, duplicate-submission protection, and service failures; they make no Azure requests.
 
 ## Configuration contract
 
