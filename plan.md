@@ -298,7 +298,7 @@ All steps are initially `pending`; plan preparation does not count as implementa
 | 04 / `step-04-config` | Validated settings, authentication modes, and DI | 03 | Azure SDK integration; credential correctness | done |
 | 05 / `step-05-analyzers` | Analyzer management adapter and tests | 04 | API semantics; asynchronous operations | done |
 | 06 / `step-06-extraction` | Analysis adapter and lossless result mapping | 04 | Complex mapping; polling and failure handling | done |
-| 07 / `step-07-storage` | Idempotent Blob persistence and tests | 04 | Persistence consistency; serialization | pending |
+| 07 / `step-07-storage` | Idempotent Blob persistence and tests | 04 | Persistence consistency; serialization | done |
 | 08 / `step-08-shell` | Accessible Blazor shell and palette | 04 | Blazor UI; CSS; accessibility | pending |
 | 09 / `step-09-analyzer-ui` | Complete analyzer-management page | 05, 08 | Interactive forms; component state | pending |
 | 10 / `step-10-results-ui` | Recursive results and confidence components | 03, 08 | Recursive UI; exact display semantics | pending |
@@ -953,4 +953,29 @@ Checks not executed:
   - No Azure resource access, live analysis, credentials, deployment, browser/UI work, or storage persistence. Real-service behavior remains for the separately authorized live checks.
 Open issues: No local Step 06 acceptance blocker. UI must treat uncertain submission and polling failures as failures, not automatically repeat analysis; live compatibility remains unverified.
 Handoff: Step 06 is complete. Step 11 can inject IDocumentAnalysisService and must perform upload format/modality validation and manage user-facing processing/error state; preserve the immutable returned snapshot for persistence retries. Step 07 remains independent. Stop for manual selection of the next step.
+```
+
+### Step 07 / `step-07-storage`
+
+```text
+Step: 07 / step-07-storage
+Status: done
+Development model: not recorded
+Prerequisites checked: Step 04 is done; reviewed its storage configuration and DI, the Step 03 immutable Core result and IAnalysisResultStore contract, sections 5 and 9, the Step 06 handoff, and repository C# instructions.
+Files changed: plan.md, src/DocAlchemy.Storage/Services/BlobAnalysisResultStore.cs, src/DocAlchemy.Storage/StorageServiceCollectionExtensions.cs, src/DocAlchemy.Storage/README.md, tests/DocAlchemy.Storage.Tests/BlobAnalysisResultStoreTests.cs, tests/DocAlchemy.Storage.Tests/README.md.
+Contracts/decisions:
+  - Serialize only the immutable AnalysisResult with the Core AnalysisJson contract to UTF-8 bytes. Upload with BlobHttpHeaders.ContentType=application/json.
+  - Use {analysisId:D}.json as a stable blob name and If-None-Match: * conditional creation in the already provisioned results container. A 412 triggers a download and exact byte comparison: an identical payload succeeds idempotently (including a retry after the first response was lost); a different payload for the same ID fails explicitly without overwrite.
+  - Return only the blob name in AnalysisStorageReference; do not return a URL/SAS or create or alter container access policy. The configured container must already exist and be private.
+  - Propagate Azure RequestFailedException for authorization, missing-container, and other storage failures so callers can distinguish persistence failure from analysis failure. No source document, credential, or raw Content Understanding response is serialized.
+Checks executed:
+  - dotnet test tests\\DocAlchemy.Storage.Tests\\DocAlchemy.Storage.Tests.csproj --no-restore: passed 7 tests using an in-process HTTP handler; no Azure requests.
+  - dotnet test DocAlchemy.slnx --no-restore: passed all 78 tests (Core 13, Storage 7, ContentUnderstanding 40, Web 18).
+  - dotnet build DocAlchemy.slnx --no-restore: succeeded with 0 warnings and 0 errors.
+  - git diff --check: passed.
+  - Tests verify the full JSON shape, typed nested values, explicit nulls, persisted application/json blob metadata, stable name/payload, opaque non-URL reference, idempotent retry, response-lost retry, collision failure, and surfaced 403/404/500 storage errors. No test uploads to Azure.
+Checks not executed:
+  - No Azure resource access, live Blob upload, credentials, deployment, or public-access configuration changes.
+Open issues: No local Step 07 acceptance blocker. Private access depends on provisioning the configured results container privately; the adapter intentionally does not create containers or modify access policies.
+Handoff: Step 07 is complete. Step 11 can inject IAnalysisResultStore, keep the same immutable AnalysisResult while offering persistence-only retries, and report persistence errors separately from analysis results. SaveAsync's returned reference is opaque and must not be presented as a public URL. Stop for manual selection of the next step.
 ```

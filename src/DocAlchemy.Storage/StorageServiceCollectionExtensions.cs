@@ -2,7 +2,9 @@ using Azure.Core;
 using Azure.Identity;
 using Azure.Storage;
 using Azure.Storage.Blobs;
+using DocAlchemy.Core.Interfaces;
 using DocAlchemy.Storage.Configuration;
+using DocAlchemy.Storage.Services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -61,6 +63,13 @@ public static class StorageServiceCollectionExtensions
                     clientOptions),
                 _ => throw new InvalidOperationException("Storage authentication configuration is invalid.")
             };
+        });
+        services.AddSingleton<IAnalysisResultStore>(provider =>
+        {
+            var options = provider.GetRequiredService<IOptions<StorageOptions>>().Value;
+            return new BlobAnalysisResultStore(
+                provider.GetRequiredService<BlobServiceClient>(),
+                options.ContainerName);
         });
 
         return services;
