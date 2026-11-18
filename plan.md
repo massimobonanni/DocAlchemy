@@ -303,7 +303,7 @@ All steps are initially `pending`; plan preparation does not count as implementa
 | 09 / `step-09-analyzer-ui` | Complete analyzer-management page | 05, 08 | Interactive forms; component state | done |
 | 10 / `step-10-results-ui` | Recursive results and confidence components | 03, 08 | Recursive UI; exact display semantics | done |
 | 11 / `step-11-analysis-ui` | Upload-to-analysis-to-save workflow | 05, 06, 07, 08, 10 | Cross-service state; cancellation; retry correctness | done |
-| 12 / `step-12-infra-base` | Naming, resource group, monitoring, and storage IaC | 04 | Bicep resource composition | pending |
+| 12 / `step-12-infra-base` | Naming, resource group, monitoring, and storage IaC | 04 | Bicep resource composition | done |
 | 13 / `step-13-infra-foundry` | Foundry models and Key Vault IaC | 01, 12 | Model deployment contracts; secret handling | pending |
 | 14 / `step-14-infra-web` | App Service configuration and scoped role assignments | 04, 12, 13 | Dependency graphs; identity and runtime configuration | pending |
 | 15 / `step-15-azd` | AZD service wiring and model-default bootstrap | 14 | Deployment lifecycle; idempotent scripting | pending |
@@ -1074,4 +1074,29 @@ Checks not executed:
   - No full-solution suite, browser workflow, Azure authentication/reachability, or live-service analysis/storage; no Azure request was made.
 Open issues: None for the Step 11 acceptance criteria.
 Handoff: Step 16 can document the implemented upload, analysis, persistence, retry, and circuit-lifetime behavior. The user chooses and starts any next step manually; no automatic follow-on work was started.
+```
+
+### Step 12 / `step-12-infra-base`
+
+```text
+Step: 12 / step-12-infra-base
+Status: done
+Development model: not recorded
+Prerequisites checked: Step 04 is done; reviewed its section 14 record, the Storage configuration validator, Web and Storage READMEs, and sections 6, 8, 9, and 13.
+Files changed: plan.md, infra/main.bicep, infra/main.parameters.json, infra/abbreviations.json, infra/modules/monitoring.bicep, infra/modules/storage.bicep, infra/README.md.
+Contracts/decisions:
+  - Subscription-scope main creates the resource group and composes monitoring and storage. AZD parameters map AZURE_ENV_NAME and AZURE_LOCATION; resultsContainerName defaults to analysis-results and is independently overridable.
+  - The full 135-entry canonical AZD abbreviation list is used for prefix-based names. Names incorporate a sanitized, bounded environment portion and a deterministic subscription/environment token. Project and azd-env-name tags apply to taggable resources.
+  - Monitoring creates a Log Analytics workspace with 30-day retention and workspace-based Application Insights. Storage creates a Standard_LRS StorageV2 account and a private results container, enforces HTTPS/TLS 1.2, disables anonymous Blob access, and retains shared-key support for explicit key mode.
+  - Main exposes only resource names, IDs, and the Blob endpoint. STORAGE_BLOB_SERVICE_ENDPOINT and STORAGE_RESULTS_CONTAINER_NAME map to Storage__BlobServiceEndpoint and Storage__ContainerName; STORAGE_RESULTS_CONTAINER_ID is the later role-assignment scope. ManagedIdentity remains the app default and account name/key must be omitted in that mode.
+  - No Application Insights connection string or Storage key is output. A later frontend module must retrieve the monitoring connection string and configure APPLICATIONINSIGHTS_CONNECTION_STRING securely, and add container-scoped access. Private container access does not imply a private endpoint or network isolation.
+Checks executed:
+  - Bicep CLI 0.43.8: `bicep build .\infra\main.bicep --outfile <session-file>` and `bicep lint .\infra\main.bicep` passed without warnings or errors.
+  - Parsed the compiled ARM template locally: verified subscription composition, workspace-linked Application Insights, StorageV2 HTTPS/TLS and shared-key settings, disabled anonymous account/container access, exact parameter/output contracts, and absence of key/connection-string expressions in outputs. Checked storage-name shape and length with representative environment-name edge cases.
+  - Compared all 135 abbreviations against the public Azure/azure-dev canonical JSON; exact match. An initial comparison exposed three transcription differences, which were corrected and rechecked.
+  - `git diff --check` passed.
+Checks not executed:
+  - No subscription lookup, Azure authentication, deployment, provisioning, resource access, role assignment, or live validation. No AZD packaging; service wiring belongs to step 15. Compilation is not evidence of Azure deployment success, regional availability, quota, or authorization.
+Open issues: No blocker for the local step 12 acceptance criteria. Container-name character rules and global name availability remain Azure deployment checks; environment preflight remains step 18.
+Handoff: Steps 13-14 may extend the documented module contracts and composition, retain nonsecret outputs, map the exact application settings, and add scoped identity access. Step 15 owns azure.yaml and bootstrap wiring. Stop for manual selection of the next step.
 ```
