@@ -297,7 +297,7 @@ All steps are initially `pending`; plan preparation does not count as implementa
 | 03 / `step-03-core` | Core interfaces, recursive models, and result contract | 02 | Domain modeling; type safety; boundary tests | done |
 | 04 / `step-04-config` | Validated settings, authentication modes, and DI | 03 | Azure SDK integration; credential correctness | done |
 | 05 / `step-05-analyzers` | Analyzer management adapter and tests | 04 | API semantics; asynchronous operations | done |
-| 06 / `step-06-extraction` | Analysis adapter and lossless result mapping | 04 | Complex mapping; polling and failure handling | pending |
+| 06 / `step-06-extraction` | Analysis adapter and lossless result mapping | 04 | Complex mapping; polling and failure handling | done |
 | 07 / `step-07-storage` | Idempotent Blob persistence and tests | 04 | Persistence consistency; serialization | pending |
 | 08 / `step-08-shell` | Accessible Blazor shell and palette | 04 | Blazor UI; CSS; accessibility | pending |
 | 09 / `step-09-analyzer-ui` | Complete analyzer-management page | 05, 08 | Interactive forms; component state | pending |
@@ -928,4 +928,29 @@ Checks not executed:
   - No Azure resource access, credential use, live analyzer CRUD, billable requests, deployment, or browser/UI work.
 Open issues: None for the local Step 05 acceptance criteria. Live authorization and service behavior remain environment checks.
 Handoff: Step 05 is complete. Step 06 may use the registered ContentUnderstandingClient and analyzer metadata, keeping analysis results on the verified raw BinaryData protocol path. Confidence warnings are exposed as AnalyzerMetadata.HasConfidenceWarning; IDs with the prebuilt prefix are read-only. Steps 08-09 remain manual and were not started; stop here for the user's next-step selection.
+```
+
+### Step 06 / `step-06-extraction`
+
+```text
+Step: 06 / step-06-extraction
+Status: done
+Development model: not recorded
+Prerequisites checked: Step 04 is done; reviewed its handoff, Step 03 Core contracts, Step 05 adapter and tests, sections 3-6, 9 and 13, SDK 1.1.0 protocol signatures, the GA get-result schema, and repository C# instructions.
+Files changed: plan.md, src/DocAlchemy.ContentUnderstanding/Configuration/DocumentUploadOptions.cs, src/DocAlchemy.ContentUnderstanding/ContentUnderstandingServiceCollectionExtensions.cs, src/DocAlchemy.ContentUnderstanding/Services/AnalysisResultMapper.cs, src/DocAlchemy.ContentUnderstanding/Services/AnalysisRetryPolicy.cs, src/DocAlchemy.ContentUnderstanding/Services/AnalysisSubmissionException.cs, src/DocAlchemy.ContentUnderstanding/Services/DocumentAnalysisService.cs, src/DocAlchemy.ContentUnderstanding/README.md, tests/DocAlchemy.ContentUnderstanding.Tests/DocumentAnalysisServiceTests.cs, tests/DocAlchemy.ContentUnderstanding.Tests/README.md, tests/DocAlchemy.Web.Tests/AzureClientCompositionTests.cs.
+Contracts/decisions:
+  - Registered singleton IDocumentAnalysisService. It reads the caller-owned stream without closing it, rejects empty or over-limit content based on actual bytes before any request, and buffers no more than the configured maximum. Uploads:MaxDocumentBytes defaults to 20,971,520 and is validated against the existing 200,000,000-byte service ceiling.
+  - Uses the SDK raw AnalyzeBinaryAsync protocol overload with WaitUntil.Started, server-selected content type, and RequestContent; a linked timeout bounds reading, submission and polling. Caller cancellation remains OperationCanceledException; internally reached timeout is TimeoutException.
+  - The shared SDK retry policy retains three exponential retries for polling and other existing operations, honors Retry-After, and disables retries and redirects specifically for POST :analyzeBinary. Submission SDK failures are wrapped in AnalysisSubmissionException with the original error as inner exception and an explicit uncertain-outcome warning. Never automatically resubmit after submission, timeout, cancellation, or polling failure; a lost response may represent an accepted paid operation.
+  - SDK raw operation Value contains the completed operation envelope, with extracted items at result.contents. Map every document content item, including empty/missing field collections, to stable indexed Core models. Field values use the GA discriminated value* properties; object/array values contain reconstructed typed values and their children retain nested type, path and confidence.
+  - Explicit JSON nulls and absent confidence remain null; unknown type nodes are preserved whole as opaque JSON. Invalid JSON, missing result/contents or required value, incorrect value type, invalid confidence, duplicate mapped properties and non-document content kinds fail with InvalidDataException. Snapshot captures the request analyzer/threshold, a new Guid, and one UTC completion timestamp. No complete service response is persisted.
+Checks executed:
+  - dotnet test DocAlchemy.slnx --no-restore: passed 71 tests (Core 13, ContentUnderstanding 40, Web 18); Storage.Tests has no tests yet. Tests use an in-process HTTP handler and make no Azure requests.
+  - Isolated tests cover all GA field types, nested arrays/objects, unknown fields, null/missing confidence, multiple and empty items, malformed results, byte bounds, running/completed and failed operations, bounded 429/503 polling retries, Retry-After, timeout, caller cancellation, and no submission retry on 429, 500, lost response, or redirect. The tests verify binary bytes, content type, captured threshold/analyzer, UTC timestamp and caller stream ownership.
+  - dotnet build DocAlchemy.slnx --no-restore: succeeded with 0 warnings and 0 errors.
+  - SDK 10.0.404 selected under global.json latestPatch roll-forward. GA result envelope cross-checked against https://learn.microsoft.com/en-us/rest/api/contentunderstanding/content-analyzers/get-result?view=rest-contentunderstanding-2025-11-01.
+Checks not executed:
+  - No Azure resource access, live analysis, credentials, deployment, browser/UI work, or storage persistence. Real-service behavior remains for the separately authorized live checks.
+Open issues: No local Step 06 acceptance blocker. UI must treat uncertain submission and polling failures as failures, not automatically repeat analysis; live compatibility remains unverified.
+Handoff: Step 06 is complete. Step 11 can inject IDocumentAnalysisService and must perform upload format/modality validation and manage user-facing processing/error state; preserve the immutable returned snapshot for persistence retries. Step 07 remains independent. Stop for manual selection of the next step.
 ```

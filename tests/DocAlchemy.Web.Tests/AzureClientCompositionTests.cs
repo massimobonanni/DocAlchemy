@@ -1,6 +1,7 @@
 using Azure.AI.ContentUnderstanding;
 using Azure.Storage.Blobs;
 using DocAlchemy.ContentUnderstanding;
+using DocAlchemy.Core.Interfaces;
 using DocAlchemy.Storage;
 using DocAlchemy.Web.Configuration;
 using Microsoft.Extensions.Configuration;
@@ -23,6 +24,7 @@ public class AzureClientCompositionTests
         using var provider = CreateProvider(contentUnderstandingMode, storageMode);
 
         Assert.IsType<ContentUnderstandingClient>(provider.GetRequiredService<ContentUnderstandingClient>());
+        Assert.NotNull(provider.GetRequiredService<IDocumentAnalysisService>());
         Assert.IsType<BlobServiceClient>(provider.GetRequiredService<BlobServiceClient>());
     }
 

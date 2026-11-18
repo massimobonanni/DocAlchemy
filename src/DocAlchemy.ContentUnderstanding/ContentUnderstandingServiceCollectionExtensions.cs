@@ -44,6 +44,11 @@ public static class ContentUnderstandingServiceCollectionExtensions
                     options.PollInterval <= options.OperationTimeout,
                 "Analysis:OperationTimeout and Analysis:PollInterval must be positive, with polling no longer than the operation timeout.")
             .ValidateOnStart();
+        services.AddOptions<DocumentUploadOptions>()
+            .Bind(configuration.GetSection(DocumentUploadOptions.SectionName))
+            .Validate(options => options.MaxDocumentBytes > 0 && options.MaxDocumentBytes <= 200_000_000,
+                "Uploads:MaxDocumentBytes must be positive and no greater than 200000000.")
+            .ValidateOnStart();
 
         services.TryAddSingleton<DefaultAzureCredential>(_ =>
             new DefaultAzureCredential(new DefaultAzureCredentialOptions
@@ -56,8 +61,7 @@ public static class ContentUnderstandingServiceCollectionExtensions
             var options = provider.GetRequiredService<IOptions<ContentUnderstandingOptions>>().Value;
             var clientOptions = new ContentUnderstandingClientOptions(
                 ContentUnderstandingClientOptions.ServiceVersion.V2025_11_01);
-            clientOptions.Retry.MaxRetries = 3;
-            clientOptions.Retry.Mode = RetryMode.Exponential;
+            clientOptions.RetryPolicy = new AnalysisRetryPolicy();
             clientOptions.Diagnostics.IsLoggingContentEnabled = false;
 
             var endpoint = new Uri(options.Endpoint);
@@ -77,6 +81,7 @@ public static class ContentUnderstandingServiceCollectionExtensions
             };
         });
         services.AddSingleton<IAnalyzerService, AnalyzerService>();
+        services.AddSingleton<IDocumentAnalysisService, DocumentAnalysisService>();
 
         return services;
     }
