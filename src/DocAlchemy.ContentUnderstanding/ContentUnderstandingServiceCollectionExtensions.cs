@@ -3,6 +3,8 @@ using Azure.AI.ContentUnderstanding;
 using Azure.Core;
 using Azure.Identity;
 using DocAlchemy.ContentUnderstanding.Configuration;
+using DocAlchemy.ContentUnderstanding.Services;
+using DocAlchemy.Core.Interfaces;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -31,6 +33,16 @@ public static class ContentUnderstandingServiceCollectionExtensions
         services.AddSingleton<IValidateOptions<ContentUnderstandingOptions>, ContentUnderstandingOptionsValidator>();
         services.AddOptions<ContentUnderstandingOptions>()
             .Bind(configuration.GetSection(ContentUnderstandingOptions.SectionName))
+            .ValidateOnStart();
+        services.AddOptions<AnalyzerOperationOptions>()
+            .Bind(configuration.GetSection(AnalyzerOperationOptions.SectionName))
+            .Validate(
+                options =>
+                    options.OperationTimeout > TimeSpan.Zero &&
+                    options.OperationTimeout <= TimeSpan.FromHours(2) &&
+                    options.PollInterval > TimeSpan.Zero &&
+                    options.PollInterval <= options.OperationTimeout,
+                "Analysis:OperationTimeout and Analysis:PollInterval must be positive, with polling no longer than the operation timeout.")
             .ValidateOnStart();
 
         services.TryAddSingleton<DefaultAzureCredential>(_ =>
@@ -64,6 +76,7 @@ public static class ContentUnderstandingServiceCollectionExtensions
                     "Content Understanding authentication configuration is invalid.")
             };
         });
+        services.AddSingleton<IAnalyzerService, AnalyzerService>();
 
         return services;
     }

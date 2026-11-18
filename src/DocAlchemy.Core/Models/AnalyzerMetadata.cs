@@ -13,6 +13,7 @@ public sealed class AnalyzerMetadata
     /// <param name="isBuiltIn">Whether the analyzer is a built-in analyzer.</param>
     /// <param name="isReadOnly">Whether the analyzer cannot be modified or deleted.</param>
     /// <param name="supportedOperations">Operations supported by the analyzer.</param>
+    /// <param name="hasConfidenceWarning">Whether confidence may be unavailable for extracted fields.</param>
     public AnalyzerMetadata(
         string id,
         string? description = null,
@@ -20,7 +21,8 @@ public sealed class AnalyzerMetadata
         string? status = null,
         bool isBuiltIn = false,
         bool isReadOnly = false,
-        ImmutableArray<string> supportedOperations = default)
+        ImmutableArray<string> supportedOperations = default,
+        bool hasConfidenceWarning = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
 
@@ -33,6 +35,7 @@ public sealed class AnalyzerMetadata
         SupportedOperations = supportedOperations.IsDefault
             ? ImmutableArray<string>.Empty
             : supportedOperations;
+        HasConfidenceWarning = hasConfidenceWarning;
     }
 
     /// <summary>Gets the analyzer identifier.</summary>
@@ -55,4 +58,7 @@ public sealed class AnalyzerMetadata
 
     /// <summary>Gets the operations supported by this analyzer.</summary>
     public ImmutableArray<string> SupportedOperations { get; }
+
+    /// <summary>Gets whether confidence may be unavailable for extracted fields.</summary>
+    public bool HasConfidenceWarning { get; }
 }

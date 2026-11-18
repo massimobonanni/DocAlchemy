@@ -1,5 +1,5 @@
 # DocAlchemy.ContentUnderstanding.Tests
 
-xUnit test project for `DocAlchemy.ContentUnderstanding`. Adapter tests will be added when service behavior is implemented; no placeholder tests are included.
+xUnit transport-isolated tests for `DocAlchemy.ContentUnderstanding`. `AnalyzerServiceTests` covers unchanged create-body transmission, no-replacement semantics, request validation, pagination, confidence inheritance/overrides, built-in deletion restrictions, bounded polling, cancellation, and surfaced service failures.
 
-Run with `dotnet test tests/DocAlchemy.ContentUnderstanding.Tests/DocAlchemy.ContentUnderstanding.Tests.csproj`.
+Run with `dotnet test tests\DocAlchemy.ContentUnderstanding.Tests\DocAlchemy.ContentUnderstanding.Tests.csproj`.
