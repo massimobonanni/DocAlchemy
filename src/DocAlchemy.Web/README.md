@@ -2,6 +2,44 @@
 
 The .NET 10 Blazor Web App using Interactive Server rendering. It composes the Core contracts and Azure adapter projects through dependency injection.
 
+## Accessible shell
+
+The shared responsive shell provides the `Analyzers` and `Analyze document` destinations, a skip link, visible keyboard focus, a main-content landmark, and reduced-motion support. Those routes are presentation-only placeholders: analyzer management, file upload, and analysis are implemented in later steps. Visiting the shell does not call Azure.
+
+The shared `StatusMessage` component uses visible state labels as well as color, announces routine status politely, and announces errors assertively. Dynamic messages render as encoded text. The CSS palette tokens match Section 7 of the repository plan:
+
+| Purpose | Token | Value |
+| --- | --- | --- |
+| Main text, titles, header/navigation | `--palette-midnight` | `#011D4E` |
+| Primary actions, underlined links, selected state | `--palette-primary` | `#0049DD` |
+| Progress accents | `--palette-progress` | `#1B92FC` |
+| AI badge/header accent | `--palette-ai-badge` | `#02E3FC` |
+| Restrained decorative accent | `--palette-decorative` | `#41F6FB` |
+| Information panels | `--palette-information` | `#BCFBFC` |
+| Low-confidence/review warning | `--palette-warning` | `#FDAC02` |
+| Page background | `--palette-page` | `#F5F9FF` |
+| Cards, dialogs, inputs | `--palette-surface` | `#FFFFFF` |
+| Secondary text | `--palette-secondary` | `#435B7D` |
+| Input borders | `--palette-border` | `#7185A6` |
+| Saving success | `--palette-success` | `#167044` |
+| Analysis/saving errors | `--palette-error` | `#B42318` |
+
+Build and run the focused Web checks with:
+
+```powershell
+dotnet build src\DocAlchemy.Web\DocAlchemy.Web.csproj
+dotnet test tests\DocAlchemy.Web.Tests\DocAlchemy.Web.Tests.csproj
+```
+
+For an isolated local browser check without Azure configuration, provide syntactically valid synthetic HTTPS endpoints as process-local environment variables before starting the Web project. The clients are composed locally; the shell does not make service requests. Do not use real credentials for this visual check.
+
+Step 08 verification:
+
+- `dotnet build src\DocAlchemy.Web\DocAlchemy.Web.csproj --no-restore` succeeded with 0 warnings and 0 errors; `dotnet test tests\DocAlchemy.Web.Tests\DocAlchemy.Web.Tests.csproj --no-restore` passed all 20 tests.
+- Browser checks confirmed the home, Analyzers, and Analyze document routes; keyboard focus and the skip link; responsive navigation/cards at a 375px viewport with no horizontal overflow; and all 13 computed palette values.
+- Contrast checks measured 16.32:1 for white on midnight, 7.01:1 for white on primary blue, 8.61:1 for midnight on warning amber, 6.56:1 for secondary text on the page background, 6.11:1 for success on white, and 6.57:1 for error on white.
+- The visual check used synthetic endpoint settings and made no Azure requests.
+
 ## Configuration contract
 
 The Web App validates all settings at startup. The following names are the provisioning contract for later Bicep/AZD work; Azure App Service settings use `__` in place of `:`. Endpoint validation is syntactic only and does not check Azure reachability or permissions.

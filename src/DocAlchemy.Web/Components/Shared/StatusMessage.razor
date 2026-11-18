@@ -1,0 +1,42 @@
+﻿<div class="@ContainerClass" role="@Role" aria-live="@LiveMode" aria-atomic="true">
+    @if (Kind is StatusMessageKind.Loading)
+    {
+        <span class="status-message__spinner" aria-hidden="true"></span>
+    }
+    <span class="status-message__label">@Label</span>
+    <p>@Message</p>
+</div>
+
+@code {
+    [Parameter]
+    public StatusMessageKind Kind { get; set; } = StatusMessageKind.Information;
+
+    [Parameter, EditorRequired]
+    public string Message { get; set; } = string.Empty;
+
+    private string ContainerClass => $"status-message status-message--{KindClass}";
+
+    private string KindClass => Kind switch
+    {
+        StatusMessageKind.Information => "information",
+        StatusMessageKind.Loading => "loading",
+        StatusMessageKind.Warning => "warning",
+        StatusMessageKind.Success => "success",
+        StatusMessageKind.Error => "error",
+        _ => throw new ArgumentOutOfRangeException(nameof(Kind), Kind, "Unsupported status message kind.")
+    };
+
+    private string Role => Kind is StatusMessageKind.Error ? "alert" : "status";
+
+    private string LiveMode => Kind is StatusMessageKind.Error ? "assertive" : "polite";
+
+    private string Label => Kind switch
+    {
+        StatusMessageKind.Information => "Information",
+        StatusMessageKind.Loading => "In progress",
+        StatusMessageKind.Warning => "Review required",
+        StatusMessageKind.Success => "Success",
+        StatusMessageKind.Error => "Error",
+        _ => throw new ArgumentOutOfRangeException(nameof(Kind), Kind, "Unsupported status message kind.")
+    };
+}

@@ -1,0 +1,24 @@
+﻿@page "/"
+
+<PageTitle>Home | DocAlchemy</PageTitle>
+
+<section class="page-heading" aria-labelledby="welcome-heading">
+    <h1 id="welcome-heading">Welcome to DocAlchemy</h1>
+    <p>Choose a workspace to manage analyzers or prepare a document for analysis.</p>
+</section>
+
+<StatusMessage Kind="StatusMessageKind.Information"
+               Message="This is the accessible application shell. Service operations are not available on this page." />
+
+<nav class="workspace-grid" aria-label="DocAlchemy workspaces">
+    <NavLink class="workspace-card" href="/analyzers" Match="NavLinkMatch.All">
+        <h2>Analyzers</h2>
+        <p>Review and manage document analysis definitions.</p>
+        <span class="workspace-card__action">Open analyzers</span>
+    </NavLink>
+    <NavLink class="workspace-card" href="/analyze" Match="NavLinkMatch.All">
+        <h2>Analyze document</h2>
+        <p>Choose a document and inspect its extracted information.</p>
+        <span class="workspace-card__action">Open document analysis</span>
+    </NavLink>
+</nav>

@@ -1,9 +1,10 @@
 #blazor-error-ui {
     color-scheme: light only;
-    background: lightyellow;
+    background: var(--palette-error);
     bottom: 0;
-    box-shadow: 0 -1px 2px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 -1px 2px rgba(1, 29, 78, 0.2);
     box-sizing: border-box;
+    color: var(--palette-surface);
     display: none;
     left: 0;
     padding: 0.6rem 1.25rem 0.7rem 1.25rem;
@@ -12,9 +13,23 @@
     z-index: 1000;
 }
 
-    #blazor-error-ui .dismiss {
-        cursor: pointer;
-        position: absolute;
-        right: 0.75rem;
-        top: 0.5rem;
-    }
+#blazor-error-ui a {
+    color: var(--palette-surface);
+    margin-left: 0.5rem;
+}
+
+#blazor-error-ui .dismiss {
+    background: transparent;
+    border: 0;
+    color: var(--palette-surface);
+    cursor: pointer;
+    font: inherit;
+    position: absolute;
+    right: 0.75rem;
+    top: 0.5rem;
+}
+
+#blazor-error-ui .dismiss:focus-visible {
+    outline: 3px solid var(--palette-surface);
+    outline-offset: 2px;
+}

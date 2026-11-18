@@ -1,9 +1,46 @@
 ﻿@inherits LayoutComponentBase
 
-@Body
+<a class="skip-link"
+   href="#main-content"
+   @onclick="FocusMainContentAsync"
+   @onclick:preventDefault="true">Skip to main content</a>
+
+<div class="site-shell">
+    <header class="site-header">
+        <div class="site-header__top">
+            <a class="brand" href="/" aria-label="DocAlchemy home">
+                <span class="brand__mark" aria-hidden="true">D</span>
+                <span>DocAlchemy</span>
+            </a>
+            <span class="ai-badge"><span aria-hidden="true">AI</span> document understanding</span>
+        </div>
+        <nav class="primary-navigation" aria-label="Primary navigation">
+            <NavLink href="/analyzers" Match="NavLinkMatch.All">Analyzers</NavLink>
+            <NavLink href="/analyze" Match="NavLinkMatch.All">Analyze document</NavLink>
+        </nav>
+    </header>
+
+    <main @ref="_mainContent" id="main-content" class="main-content" tabindex="-1">
+        @Body
+    </main>
+
+    <footer class="site-footer">
+        <span>DocAlchemy</span>
+        <span>Document understanding workspace</span>
+    </footer>
+</div>
 
 <div id="blazor-error-ui" data-nosnippet>
-    An unhandled error has occurred.
+    <span>An unexpected error occurred.</span>
     <a href="." class="reload">Reload</a>
-    <span class="dismiss">🗙</span>
+    <button class="dismiss" type="button" aria-label="Dismiss error">×</button>
 </div>
+
+@code {
+    private ElementReference _mainContent;
+
+    private async Task FocusMainContentAsync()
+    {
+        await _mainContent.FocusAsync();
+    }
+}

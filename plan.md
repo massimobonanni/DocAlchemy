@@ -299,7 +299,7 @@ All steps are initially `pending`; plan preparation does not count as implementa
 | 05 / `step-05-analyzers` | Analyzer management adapter and tests | 04 | API semantics; asynchronous operations | done |
 | 06 / `step-06-extraction` | Analysis adapter and lossless result mapping | 04 | Complex mapping; polling and failure handling | done |
 | 07 / `step-07-storage` | Idempotent Blob persistence and tests | 04 | Persistence consistency; serialization | done |
-| 08 / `step-08-shell` | Accessible Blazor shell and palette | 04 | Blazor UI; CSS; accessibility | pending |
+| 08 / `step-08-shell` | Accessible Blazor shell and palette | 04 | Blazor UI; CSS; accessibility | done |
 | 09 / `step-09-analyzer-ui` | Complete analyzer-management page | 05, 08 | Interactive forms; component state | pending |
 | 10 / `step-10-results-ui` | Recursive results and confidence components | 03, 08 | Recursive UI; exact display semantics | pending |
 | 11 / `step-11-analysis-ui` | Upload-to-analysis-to-save workflow | 05, 06, 07, 08, 10 | Cross-service state; cancellation; retry correctness | pending |
@@ -978,4 +978,29 @@ Checks not executed:
   - No Azure resource access, live Blob upload, credentials, deployment, or public-access configuration changes.
 Open issues: No local Step 07 acceptance blocker. Private access depends on provisioning the configured results container privately; the adapter intentionally does not create containers or modify access policies.
 Handoff: Step 07 is complete. Step 11 can inject IAnalysisResultStore, keep the same immutable AnalysisResult while offering persistence-only retries, and report persistence errors separately from analysis results. SaveAsync's returned reference is opaque and must not be presented as a public URL. Stop for manual selection of the next step.
+```
+
+### Step 08 / `step-08-shell`
+
+```text
+Step: 08 / step-08-shell
+Status: done
+Development model: not recorded
+Prerequisites checked: Step 04 is done; reviewed its Web configuration and DI contract, the Step 07 handoff, Sections 7, 9, and 10, existing Web components/tests, and .github/instructions/csharp.instructions.md.
+Files changed: plan.md, src/DocAlchemy.Web/Components/App.razor, src/DocAlchemy.Web/Components/Layout/MainLayout.razor, src/DocAlchemy.Web/Components/Layout/MainLayout.razor.css, src/DocAlchemy.Web/Components/Pages/Index.razor, src/DocAlchemy.Web/Components/Pages/Analyzers.razor, src/DocAlchemy.Web/Components/Pages/Analyze.razor, src/DocAlchemy.Web/Components/Shared/StatusMessage.razor, src/DocAlchemy.Web/Components/Shared/StatusMessageKind.cs, src/DocAlchemy.Web/Components/_Imports.razor, src/DocAlchemy.Web/wwwroot/app.css, src/DocAlchemy.Web/README.md, tests/DocAlchemy.Web.Tests/DocAlchemy.Web.Tests.csproj, tests/DocAlchemy.Web.Tests/StatusMessageTests.cs.
+Contracts/decisions:
+  - Kept the Blazor route tree on Interactive Server rendering and added the accessible responsive shell with Analyzers and Analyze document navigation. Those destinations are explicitly nonfunctional placeholders; no analyzer, upload, or analysis business logic was added.
+  - Implemented all 13 Section 7 palette colors as CSS custom properties with the prescribed surface/text pairings. Shared status messages have visible labels, polite status announcements, assertive error announcements, encoded text, and loading/warning/success/error styles.
+  - The skip link moves keyboard focus to the main landmark after interactive startup. No Azure service, credentials, or UI framework were added.
+Checks executed:
+  - dotnet build src\DocAlchemy.Web\DocAlchemy.Web.csproj --no-restore: succeeded with 0 warnings and 0 errors.
+  - dotnet test tests\DocAlchemy.Web.Tests\DocAlchemy.Web.Tests.csproj --no-restore: passed all 20 tests; added focused checks for assertive error announcements, encoded dynamic text, and non-color warning labels.
+  - git diff --check: passed.
+  - Browser at http://localhost:5053: home, /analyzers, and /analyze rendered their expected headings/titles and selected navigation state. Interactive navigation preserved the document; the skip link was keyboard focused and Enter moved focus to main. At a 375px viewport, navigation stacked, workspace cards used one column, and document width matched the viewport content width with no horizontal overflow. A 1280x900 screenshot was visually checked.
+  - Browser-computed CSS values matched all 13 approved hex colors. Measured contrast ratios: white on midnight 16.32:1; white on primary blue 7.01:1; midnight on warning amber 8.61:1; secondary text on page background 6.56:1; success on white 6.11:1; error on white 6.57:1.
+  - Browser run used only synthetic HTTPS endpoint configuration and local HTTP; no Azure requests or credentials were used. The HTTP-only runner logged the expected missing-HTTPS-port redirection warning; this did not affect the shell checks.
+Checks not executed:
+  - No full-solution suite, Azure reachability/authentication, or live-service checks; those are outside this shell step and no Azure service was invoked.
+Open issues: None for Step 08. The analyzer and analysis destinations intentionally remain placeholders for their later steps.
+Handoff: Step 09 can replace the Analyzers placeholder and reuse the responsive shell, selected navigation, palette tokens, and StatusMessage component. Step 10 can reuse the same status and palette primitives. No automatic follow-on work was started.
 ```
