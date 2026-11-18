@@ -302,7 +302,7 @@ All steps are initially `pending`; plan preparation does not count as implementa
 | 08 / `step-08-shell` | Accessible Blazor shell and palette | 04 | Blazor UI; CSS; accessibility | done |
 | 09 / `step-09-analyzer-ui` | Complete analyzer-management page | 05, 08 | Interactive forms; component state | done |
 | 10 / `step-10-results-ui` | Recursive results and confidence components | 03, 08 | Recursive UI; exact display semantics | done |
-| 11 / `step-11-analysis-ui` | Upload-to-analysis-to-save workflow | 05, 06, 07, 08, 10 | Cross-service state; cancellation; retry correctness | pending |
+| 11 / `step-11-analysis-ui` | Upload-to-analysis-to-save workflow | 05, 06, 07, 08, 10 | Cross-service state; cancellation; retry correctness | done |
 | 12 / `step-12-infra-base` | Naming, resource group, monitoring, and storage IaC | 04 | Bicep resource composition | pending |
 | 13 / `step-13-infra-foundry` | Foundry models and Key Vault IaC | 01, 12 | Model deployment contracts; secret handling | pending |
 | 14 / `step-14-infra-web` | App Service configuration and scoped role assignments | 04, 12, 13 | Dependency graphs; identity and runtime configuration | pending |
@@ -1050,4 +1050,28 @@ Checks not executed:
   - No full-solution suite, browser workflow, Azure reachability/authentication, or live-service operation; no Azure request was made.
 Open issues: None for the Step 10 acceptance criteria.
 Handoff: Step 11 can pass its completed immutable AnalysisResult directly to AnalysisResults; the components use the captured confidence threshold and require no fixed analyzer schema. Keep analysis submission, upload, saving, workflow state, and service calls in step 11. No automatic follow-on work was started.
+```
+
+### Step 11 / `step-11-analysis-ui`
+
+```text
+Step: 11 / step-11-analysis-ui
+Status: done
+Development model: not recorded
+Prerequisites checked: Steps 05-08 and 10 are done; reviewed the analyzer and analysis service contracts, upload/analysis options, immutable result/storage contracts, result components, Section 9, and .github/instructions/csharp.instructions.md.
+Files changed: plan.md, src/DocAlchemy.Web/Components/Pages/Analyze.razor, src/DocAlchemy.Web/Components/Pages/Analyze.razor.css, src/DocAlchemy.Web/README.md, tests/DocAlchemy.Web.Tests/AnalysisWorkflowTests.cs, tests/DocAlchemy.ContentUnderstanding.Tests/DocumentAnalysisServiceTests.cs.
+Contracts/decisions:
+  - The page lists only analyzers supporting analyze with document or image modality; audio/video and unsupported operations are excluded.
+  - The server validates allowed extensions and declared MIME types, rejects empty/oversized selections, and supplies canonical MIME types. The existing analysis service independently measures actual stream bytes, rejects empty/oversized input, and keeps ownership with the page; the source document is never saved.
+  - Analyzer ID and confidence threshold are captured for the analysis request. The normalized immutable result is rendered directly by AnalysisResults and saved automatically, with analysis and storage status reported separately.
+  - A failed save retains the same snapshot in the circuit, disables starting another analysis, and retries IAnalysisResultStore only. The opaque storage reference is not displayed. Disposal cancels outstanding page operations; unsaved circuit-local results are documented as lost when the circuit ends.
+  - Added isolated component tests for analyzer filtering, supported/unsupported and mismatched input, empty files, exact configured-size acceptance and next-byte rejection, captured threshold, immutable-snapshot retry, no second analysis on retry, empty results, and disposal cancellation. Added a service boundary test at 20,971,520 and 20,971,521 actual bytes.
+Checks executed:
+  - `dotnet test tests\DocAlchemy.Web.Tests\DocAlchemy.Web.Tests.csproj --no-restore`: passed all 36 tests.
+  - `dotnet test tests\DocAlchemy.ContentUnderstanding.Tests\DocAlchemy.ContentUnderstanding.Tests.csproj --no-restore`: passed all 42 tests, including the exact configured upload boundary; all Azure calls use test doubles and no service requests were made.
+  - `git diff --check`: passed.
+Checks not executed:
+  - No full-solution suite, browser workflow, Azure authentication/reachability, or live-service analysis/storage; no Azure request was made.
+Open issues: None for the Step 11 acceptance criteria.
+Handoff: Step 16 can document the implemented upload, analysis, persistence, retry, and circuit-lifetime behavior. The user chooses and starts any next step manually; no automatic follow-on work was started.
 ```

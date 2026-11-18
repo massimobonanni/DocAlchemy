@@ -1,0 +1,161 @@
+.analysis-section {
+    margin-top: 2rem;
+}
+
+.section-heading {
+    align-items: flex-start;
+    display: flex;
+    gap: 1rem;
+    justify-content: space-between;
+}
+
+.section-heading h2 {
+    font-size: 1.55rem;
+    margin: 0 0 0.4rem;
+}
+
+.section-heading p,
+.field-help {
+    color: var(--palette-secondary);
+    line-height: 1.5;
+    margin: 0;
+}
+
+.analysis-form,
+.empty-state {
+    background: var(--palette-surface);
+    border: 1px solid var(--palette-border);
+    border-radius: 0.75rem;
+    box-shadow: 0 0.3rem 1rem rgba(1, 29, 78, 0.05);
+    margin-top: 1rem;
+    max-width: 52rem;
+    padding: 1.25rem;
+}
+
+.analysis-form {
+    display: grid;
+    gap: 1.25rem;
+}
+
+.analysis-form fieldset {
+    border: 0;
+    display: grid;
+    gap: 1.25rem;
+    margin: 0;
+    min-width: 0;
+    padding: 0;
+}
+
+.form-field {
+    display: grid;
+    gap: 0.45rem;
+}
+
+.form-field label {
+    font-weight: 700;
+}
+
+.form-field select,
+.form-field input[type="file"] {
+    font: inherit;
+    max-width: 100%;
+}
+
+.form-field select {
+    background: var(--palette-surface);
+    border: 1px solid var(--palette-border);
+    border-radius: 0.35rem;
+    color: var(--palette-midnight);
+    min-height: 2.75rem;
+    padding: 0.55rem 0.7rem;
+    width: 100%;
+}
+
+.form-field select:focus-visible,
+.form-field input:focus-visible {
+    outline: 3px solid var(--palette-primary);
+    outline-offset: 2px;
+}
+
+.field-help {
+    font-size: 0.92rem;
+}
+
+.field-error {
+    color: var(--palette-error);
+    font-weight: 650;
+    margin: 0;
+}
+
+.button,
+.storage-status {
+    align-items: center;
+    display: inline-flex;
+    gap: 0.65rem;
+}
+
+.button {
+    border: 2px solid transparent;
+    border-radius: 0.4rem;
+    cursor: pointer;
+    font: inherit;
+    font-weight: 700;
+    justify-content: center;
+    min-height: 2.65rem;
+    padding: 0.55rem 0.9rem;
+}
+
+.button:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.button--primary {
+    background: var(--palette-primary);
+    color: var(--palette-surface);
+    justify-self: start;
+}
+
+.button--secondary {
+    background: var(--palette-surface);
+    border-color: var(--palette-primary);
+    color: var(--palette-primary);
+}
+
+.empty-state {
+    color: var(--palette-secondary);
+    line-height: 1.5;
+}
+
+.storage-status {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    margin-top: 1rem;
+}
+
+.storage-status .status-message {
+    margin: 0;
+}
+
+.circuit-note {
+    color: var(--palette-secondary);
+    font-size: 0.92rem;
+    line-height: 1.5;
+    margin-top: 1.5rem;
+}
+
+@media (max-width: 44rem) {
+    .section-heading {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .storage-status {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .storage-status .button {
+        align-self: flex-start;
+    }
+}

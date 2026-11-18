@@ -308,6 +308,30 @@ public sealed class DocumentAnalysisServiceTests
         Assert.True(input.CanRead);
     }
 
+    [Theory]
+    [InlineData(20_971_520, true)]
+    [InlineData(20_971_521, false)]
+    public async Task EnforcesConfiguredTwentyMebibyteUploadBoundary(int length, bool accepted)
+    {
+        var handler = new RecordingHandler((request, _) => Task.FromResult(request.Method == HttpMethod.Post
+            ? Accepted()
+            : Response(HttpStatusCode.OK, "{\"status\":\"Succeeded\",\"result\":{\"contents\":[]}}")));
+        var service = CreateService(handler, maxBytes: 20_971_520);
+        using var input = new MemoryStream(new byte[length]);
+
+        if (accepted)
+        {
+            await service.AnalyzeAsync(new DocumentAnalysisRequest("analyzer", input, "application/pdf", 0.8));
+            Assert.Contains(handler.Requests, request => request.Method == HttpMethod.Post);
+        }
+        else
+        {
+            await Assert.ThrowsAsync<InvalidDataException>(() =>
+                service.AnalyzeAsync(new DocumentAnalysisRequest("analyzer", input, "application/pdf", 0.8)));
+            Assert.Empty(handler.Requests);
+        }
+    }
+
     private static Task<DocAlchemy.Core.Models.AnalysisResult> Analyze(
         DocumentAnalysisService service, CancellationToken cancellationToken = default)
     {

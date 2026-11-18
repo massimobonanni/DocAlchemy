@@ -1,11 +1,389 @@
-﻿@page "/analyze"
+@page "/analyze"
+@implements IDisposable
+@using System.Collections.Immutable
+@using DocAlchemy.Core.Interfaces
+@using DocAlchemy.Core.Models
+@using DocAlchemy.Web.Configuration
+@using Microsoft.Extensions.Options
+@inject IAnalyzerService AnalyzerService
+@inject IDocumentAnalysisService DocumentAnalysisService
+@inject IAnalysisResultStore ResultStore
+@inject IOptions<AnalysisOptions> AnalysisOptions
+@inject IOptions<UploadsOptions> UploadOptions
 
 <PageTitle>Analyze document | DocAlchemy</PageTitle>
 
 <section class="page-heading" aria-labelledby="page-title">
     <h1 id="page-title">Analyze document</h1>
-    <p>Prepare a supported document for extraction and review.</p>
+    <p>Choose a document analyzer and upload one supported document for extraction.</p>
 </section>
 
-<StatusMessage Kind="StatusMessageKind.Information"
-               Message="Document upload and analysis are not implemented in this shell. No service is contacted." />
+<section class="analysis-section" aria-labelledby="analysis-input-title">
+    <div class="section-heading">
+        <div>
+            <h2 id="analysis-input-title">Document input</h2>
+            <p>Only the analysis result is saved. The source document is not stored.</p>
+        </div>
+        @if (analyzers.IsEmpty && !isLoadingAnalyzers)
+        {
+            <button id="refresh-document-analyzers"
+                    class="button button--secondary"
+                    type="button"
+                    @onclick="LoadAnalyzersAsync"
+                    disabled="@IsBusy">
+                Refresh analyzers
+            </button>
+        }
+    </div>
+
+    @if (isLoadingAnalyzers && analyzers.IsEmpty)
+    {
+        <StatusMessage Kind="StatusMessageKind.Loading" Message="Loading document analyzers." />
+    }
+    else if (!string.IsNullOrEmpty(analyzerLoadError))
+    {
+        <StatusMessage Kind="StatusMessageKind.Error" Message="@analyzerLoadError" />
+    }
+    else if (analyzers.IsEmpty)
+    {
+        <p class="empty-state">No document-compatible analyzers are available.</p>
+    }
+
+    <form class="analysis-form" @onsubmit="AnalyzeAsync" @onsubmit:preventDefault>
+        <fieldset disabled="@ControlsDisabled">
+            <div class="form-field">
+                <label for="document-analyzer">Document analyzer</label>
+                <select id="document-analyzer"
+                        @bind="selectedAnalyzerId"
+                        aria-describedby="document-analyzer-help">
+                    <option value="">Select an analyzer</option>
+                    @foreach (var analyzer in analyzers)
+                    {
+                        <option value="@analyzer.Id">@analyzer.Id@(string.IsNullOrWhiteSpace(analyzer.Description) ? string.Empty : $" — {analyzer.Description}")</option>
+                    }
+                </select>
+                <p id="document-analyzer-help" class="field-help">Audio and video analyzers are not listed.</p>
+            </div>
+
+            <div class="form-field">
+                <label for="analysis-document">Document</label>
+                <InputFile id="analysis-document"
+                           OnChange="SelectDocumentAsync"
+                           accept=".pdf,.docx,.txt,.md,.jpg,.jpeg,.png,.bmp,.tif,.tiff,.heif,.heic"
+                           aria-describedby="analysis-document-help upload-error" />
+                <p id="analysis-document-help" class="field-help">
+                    PDF, DOCX, TXT, Markdown, JPEG, PNG, BMP, TIFF, HEIF, or HEIC.
+                    Maximum size: @FormatBytes(MaximumDocumentBytes).
+                </p>
+                @if (!string.IsNullOrEmpty(selectedFileName))
+                {
+                    <p class="field-help">Selected file: @selectedFileName</p>
+                }
+                @if (!string.IsNullOrEmpty(uploadError))
+                {
+                    <p id="upload-error" class="field-error" role="alert">@uploadError</p>
+                }
+            </div>
+        </fieldset>
+
+        <button id="analyze-document"
+                class="button button--primary"
+                type="submit"
+                disabled="@(ControlsDisabled || selectedDocument is null || string.IsNullOrEmpty(selectedAnalyzerId) || HasUnsavedResult)">
+            @(isAnalyzing ? "Analyzing document…" : isSaving ? "Saving results…" : "Analyze document")
+        </button>
+    </form>
+
+    @if (!string.IsNullOrEmpty(analysisStatusMessage) && analysisStatusKind is StatusMessageKind analysisKind)
+    {
+        <StatusMessage Kind="analysisKind" Message="@analysisStatusMessage" />
+    }
+    @if (!string.IsNullOrEmpty(storageStatusMessage) && storageStatusKind is StatusMessageKind storageKind)
+    {
+        <div class="storage-status">
+            <StatusMessage Kind="storageKind" Message="@storageStatusMessage" />
+            @if (HasUnsavedResult)
+            {
+                <button id="retry-save-analysis"
+                        class="button button--secondary"
+                        type="button"
+                        @onclick="RetrySaveAsync"
+                        disabled="@(IsBusy || isDisposed)">
+                    @(isSaving ? "Saving results…" : "Retry saving results")
+                </button>
+            }
+        </div>
+    }
+
+    @if (HasUnsavedResult)
+    {
+        <StatusMessage Kind="StatusMessageKind.Information"
+                       Message="This completed result is held only in this circuit until it is saved. Starting another analysis is disabled so a storage retry cannot replace it." />
+    }
+</section>
+
+@if (result is not null)
+{
+    <AnalysisResults Result="result" />
+}
+
+<p class="circuit-note">
+    Unsaved in-memory results are lost if this browser circuit ends or reconnects as a new circuit.
+</p>
+
+@code {
+    private static readonly IReadOnlyDictionary<string, (string Canonical, string[] Allowed)> SupportedTypes =
+        new Dictionary<string, (string, string[])>(StringComparer.OrdinalIgnoreCase)
+        {
+            [".pdf"] = ("application/pdf", ["application/pdf"]),
+            [".docx"] = ("application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                ["application/vnd.openxmlformats-officedocument.wordprocessingml.document"]),
+            [".txt"] = ("text/plain", ["text/plain"]),
+            [".md"] = ("text/markdown", ["text/markdown", "text/plain"]),
+            [".jpg"] = ("image/jpeg", ["image/jpeg"]),
+            [".jpeg"] = ("image/jpeg", ["image/jpeg"]),
+            [".png"] = ("image/png", ["image/png"]),
+            [".bmp"] = ("image/bmp", ["image/bmp"]),
+            [".tif"] = ("image/tiff", ["image/tiff"]),
+            [".tiff"] = ("image/tiff", ["image/tiff"]),
+            [".heif"] = ("image/heif", ["image/heif", "image/heic"]),
+            [".heic"] = ("image/heic", ["image/heic", "image/heif"])
+        };
+
+    private readonly CancellationTokenSource lifetimeCancellation = new();
+    private ImmutableArray<AnalyzerMetadata> analyzers = ImmutableArray<AnalyzerMetadata>.Empty;
+    private IBrowserFile? selectedDocument;
+    private string? selectedContentType;
+    private string selectedAnalyzerId = string.Empty;
+    private string? selectedFileName;
+    private string? uploadError;
+    private string? analyzerLoadError;
+    private string analysisStatusMessage = string.Empty;
+    private string storageStatusMessage = string.Empty;
+    private StatusMessageKind? analysisStatusKind;
+    private StatusMessageKind? storageStatusKind;
+    private AnalysisResult? result;
+    private bool isLoadingAnalyzers;
+    private bool isAnalyzing;
+    private bool isSaving;
+    private bool isSaved;
+    private bool isDisposed;
+
+    private long MaximumDocumentBytes => UploadOptions.Value.MaxDocumentBytes;
+    private bool IsBusy => isAnalyzing || isSaving;
+    private bool HasUnsavedResult => result is not null && !isSaved;
+    private bool ControlsDisabled => IsBusy || HasUnsavedResult || isDisposed;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAnalyzersAsync();
+    }
+
+    private async Task LoadAnalyzersAsync()
+    {
+        if (isLoadingAnalyzers || IsBusy || HasUnsavedResult || isDisposed)
+        {
+            return;
+        }
+
+        isLoadingAnalyzers = true;
+        analyzerLoadError = null;
+        try
+        {
+            var available = await AnalyzerService.ListAsync(lifetimeCancellation.Token);
+            analyzers = [.. available.Where(IsDocumentAnalyzer)];
+        }
+        catch (OperationCanceledException) when (lifetimeCancellation.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception)
+        {
+            analyzerLoadError = $"Could not load document analyzers: {exception.Message}";
+        }
+        finally
+        {
+            isLoadingAnalyzers = false;
+        }
+    }
+
+    private Task SelectDocumentAsync(InputFileChangeEventArgs args)
+    {
+        selectedDocument = null;
+        selectedContentType = null;
+        selectedFileName = null;
+        uploadError = null;
+
+        var file = args.File;
+        if (file is null)
+        {
+            uploadError = "Select one document to analyze.";
+            return Task.CompletedTask;
+        }
+
+        selectedFileName = file.Name;
+        if (!TryGetCanonicalContentType(file, out var contentType, out var validationError))
+        {
+            uploadError = validationError;
+            return Task.CompletedTask;
+        }
+
+        if (file.Size <= 0)
+        {
+            uploadError = "The selected document is empty.";
+            return Task.CompletedTask;
+        }
+
+        if (file.Size > MaximumDocumentBytes)
+        {
+            uploadError = $"The selected document exceeds the {FormatBytes(MaximumDocumentBytes)} limit.";
+            return Task.CompletedTask;
+        }
+
+        selectedDocument = file;
+        selectedContentType = contentType;
+        return Task.CompletedTask;
+    }
+
+    private async Task AnalyzeAsync()
+    {
+        var document = selectedDocument;
+        var contentType = selectedContentType;
+        var analyzerId = selectedAnalyzerId;
+        if (document is null ||
+            contentType is null ||
+            string.IsNullOrWhiteSpace(analyzerId) ||
+            IsBusy ||
+            HasUnsavedResult ||
+            isDisposed)
+        {
+            return;
+        }
+
+        var confidenceThreshold = AnalysisOptions.Value.ConfidenceThreshold;
+        isAnalyzing = true;
+        analysisStatusKind = StatusMessageKind.Loading;
+        analysisStatusMessage = $"Analyzing with {analyzerId}.";
+        storageStatusKind = null;
+        storageStatusMessage = string.Empty;
+
+        try
+        {
+            await using var stream = document.OpenReadStream(
+                MaximumDocumentBytes,
+                lifetimeCancellation.Token);
+            var snapshot = await DocumentAnalysisService.AnalyzeAsync(
+                new DocumentAnalysisRequest(analyzerId, stream, contentType, confidenceThreshold),
+                lifetimeCancellation.Token);
+
+            result = snapshot;
+            isSaved = false;
+            analysisStatusKind = StatusMessageKind.Success;
+            analysisStatusMessage = "Analysis completed.";
+            isAnalyzing = false;
+            await SaveSnapshotAsync(snapshot);
+        }
+        catch (OperationCanceledException) when (lifetimeCancellation.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception)
+        {
+            analysisStatusKind = StatusMessageKind.Error;
+            analysisStatusMessage = $"Could not analyze the document: {exception.Message}";
+        }
+        finally
+        {
+            isAnalyzing = false;
+        }
+    }
+
+    private async Task RetrySaveAsync()
+    {
+        var snapshot = result;
+        if (snapshot is null || IsBusy || isSaved || isDisposed)
+        {
+            return;
+        }
+
+        await SaveSnapshotAsync(snapshot);
+    }
+
+    private async Task SaveSnapshotAsync(AnalysisResult snapshot)
+    {
+        if (isSaving || isDisposed)
+        {
+            return;
+        }
+
+        isSaving = true;
+        storageStatusKind = StatusMessageKind.Loading;
+        storageStatusMessage = "Saving analysis results.";
+        try
+        {
+            await ResultStore.SaveAsync(snapshot, lifetimeCancellation.Token);
+            isSaved = true;
+            storageStatusKind = StatusMessageKind.Success;
+            storageStatusMessage = "Analysis results were saved.";
+        }
+        catch (OperationCanceledException) when (lifetimeCancellation.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception)
+        {
+            isSaved = false;
+            storageStatusKind = StatusMessageKind.Error;
+            storageStatusMessage = $"Analysis completed, but saving failed: {exception.Message}";
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private static bool IsDocumentAnalyzer(AnalyzerMetadata analyzer) =>
+        analyzer.SupportedOperations.Contains("analyze", StringComparer.OrdinalIgnoreCase) &&
+        (string.Equals(analyzer.Modality, "document", StringComparison.OrdinalIgnoreCase) ||
+         string.Equals(analyzer.Modality, "image", StringComparison.OrdinalIgnoreCase));
+
+    private static bool TryGetCanonicalContentType(
+        IBrowserFile file,
+        out string contentType,
+        out string error)
+    {
+        contentType = string.Empty;
+        var extension = Path.GetExtension(file.Name);
+        if (!SupportedTypes.TryGetValue(extension, out var supportedType))
+        {
+            error = "Select a supported document file type.";
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(file.ContentType) ||
+            (!string.Equals(file.ContentType, "application/octet-stream", StringComparison.OrdinalIgnoreCase) &&
+             !supportedType.Allowed.Contains(file.ContentType, StringComparer.OrdinalIgnoreCase)))
+        {
+            error = "The selected file type does not match its declared content type.";
+            return false;
+        }
+
+        contentType = supportedType.Canonical;
+        error = string.Empty;
+        return true;
+    }
+
+    private static string FormatBytes(long bytes) =>
+        bytes % (1024 * 1024) is 0
+            ? $"{bytes / (1024 * 1024)} MiB"
+            : $"{bytes:N0} bytes";
+
+    public void Dispose()
+    {
+        if (isDisposed)
+        {
+            return;
+        }
+
+        isDisposed = true;
+        lifetimeCancellation.Cancel();
+        lifetimeCancellation.Dispose();
+    }
+}
