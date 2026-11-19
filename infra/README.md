@@ -1,11 +1,10 @@
-# Infrastructure foundation
+# Infrastructure composition
 
-This is the Step 13 infrastructure composition, not a complete deployable
-application. The subscription-scope Bicep entry point creates a resource group
-containing monitoring, private results storage, a Foundry `AIServices` account
-with Content Understanding model deployments, and an RBAC-enabled Key Vault
-holding the Foundry API key. App Service, role assignments, AZD service wiring,
-and the Content Understanding defaults bootstrap are later steps. No Azure
+The subscription-scope Bicep entry point creates a resource group containing
+monitoring, private results storage, a Foundry `AIServices` account with
+Content Understanding model deployments, an RBAC-enabled Key Vault, and a
+Linux App Service Web App with scoped access assignments. AZD service wiring
+and the Content Understanding defaults bootstrap are step 15. No Azure
 resource or live access has been validated.
 
 ## Entry point and naming
@@ -21,6 +20,16 @@ resource or live access has been validated.
 | `foundrySkuName` | Foundry account SKU; defaults to `S0`. |
 | `completionDeploymentName`, `completionModelVersion`, `completionDeploymentSkuName`, `completionDeploymentCapacity` | GPT-5.2 deployment; defaults to `gpt-52`, `2025-12-11`, `GlobalStandard`, and `1`. |
 | `embeddingDeploymentName`, `embeddingModelVersion`, `embeddingDeploymentSkuName`, `embeddingDeploymentCapacity` | Text Embedding 3 Large deployment; defaults to `text-embedding-3-large`, `1`, `GlobalStandard`, and `1`. |
+| `appServicePlanSkuName` | App Service plan SKU; defaults to the single-instance `B1` Basic plan. Supported values are `B1`, `B2`, `B3`, `P0v3`, `P1v3`, and `P2v3`. |
+| `contentUnderstandingAuthenticationMode` | Web App Content Understanding auth mode: `ManagedIdentity` (default) or `ApiKey`. API-key mode uses the Key Vault reference; no key value is a parameter. |
+| `bootstrapPrincipalId` | Optional Entra principal object ID receiving the scoped `Cognitive Services User` role for step 15 defaults setup. Leave empty when an existing assignment will be used. |
+| `confidenceThreshold` | Application threshold, default `0.8`, inclusive range `[0, 1]`. |
+| `maxDocumentBytes` | Application upload limit, default `20,971,520`, range `1`-`200,000,000`. |
+
+Bicep parameters support integer rather than decimal primitive types, so
+`confidenceThreshold` is a bounded string (default `0.80`). The Web
+application's startup options validation enforces that the value is finite and
+within `[0, 1]`.
 
 `main.parameters.json` maps `AZURE_ENV_NAME` and `AZURE_LOCATION` to the
 required parameters. The container uses its Bicep default; the parameter can
@@ -50,16 +59,18 @@ resource tags.
 
 | Module | Inputs | Nonsecret outputs |
 | --- | --- | --- |
-| `modules/monitoring.bicep` | `location`, `workspaceName`, `applicationInsightsName`, `tags` | `workspaceId`, `applicationInsightsId` |
+| `modules/monitoring.bicep` | `location`, `workspaceName`, `applicationInsightsName`, `tags` | `workspaceId`, `applicationInsightsId`, internal `applicationInsightsConnectionString` |
 | `modules/storage.bicep` | `location`, `storageAccountName`, `containerName`, `tags` | `storageAccountId`, `storageAccountName`, `blobServiceEndpoint`, `containerId`, `containerName` |
 | `modules/foundry.bicep` | Foundry `location`, account SKU/name, pinned model versions, deployment names/SKUs/capacities, `tags` | Foundry account ID/name/endpoint and nonsecret model/deployment metadata |
 | `modules/keyvault.bicep` | Primary `location`, vault name, Foundry account name, `tags` | Vault ID/name/URI and versionless secret name/URI |
+| `modules/frontend.bicep` | `location`, plan/Web App names and SKU, tags, monitoring connection string, service endpoints, container, versionless API-key secret URI, threshold, upload limit | Web App ID/name/URL and system-assigned principal ID |
+| `modules/access.bicep` | Foundry/storage/container/Key Vault names, Web App principal ID, auth mode, optional bootstrap principal ID | No outputs |
 
 The monitoring module uses a 30-day Log Analytics retention period and
-connects Application Insights to that workspace. A later frontend module must
-retrieve the Application Insights connection string from the component and
-set `APPLICATIONINSIGHTS_CONNECTION_STRING`; it is not an output of this
-foundation.
+connects Application Insights to that workspace. It passes the connection
+string internally to the frontend module, which sets
+`APPLICATIONINSIGHTS_CONNECTION_STRING`; it is not a top-level deployment
+output.
 
 The storage module creates a Standard_LRS StorageV2 account, requires HTTPS
 and TLS 1.2 or newer, disables anonymous Blob access at account level, and
@@ -83,15 +94,70 @@ The Key Vault module enables Azure RBAC, soft delete, and purge protection. It
 retrieves Foundry key 1 through the account `listKeys()` function and writes it
 directly as the `ContentUnderstandingApiKey` secret. The key is not passed
 through a Bicep parameter or output. The module outputs only nonsecret vault
-and secret-reference metadata. The App Service Key Vault reference and
-least-privilege `Key Vault Secrets User` assignment are for step 14; the
-deployment operator must be authorized to write the secret.
+and secret-reference metadata. In `ApiKey` mode only, App Service receives a
+versionless `@Microsoft.KeyVault(SecretUri=...)` setting and its identity gets
+`Key Vault Secrets User` at the vault scope. In the default
+`ManagedIdentity` mode, the API-key setting and Key Vault role are omitted.
+The deployment operator must be authorized to write the secret.
 
 The dependency graph is one-way: the Key Vault module receives the Foundry
-account name from the Foundry module, and later Web/access modules may consume
-the vault metadata and Web identity. The Foundry module does not depend on
-Key Vault or the Web App, so adding the later secret reference and role
-assignment does not create a deployment cycle.
+account name from the Foundry module; the frontend consumes monitoring,
+Foundry, storage, and Key Vault outputs; and the access module consumes the
+frontend principal and target resource names. The Foundry module does not
+depend on Key Vault or the Web App, so the secret reference and role
+assignments do not create a deployment cycle.
+
+## App Service configuration and access
+
+The frontend module creates a Linux App Service plan and a .NET 10 Web App
+with a system-assigned identity. The default B1 Basic SKU supports Always On.
+The app requires HTTPS, TLS 1.2 or newer for both the app and SCM site,
+WebSockets, HTTP/2, Always On, and session affinity for Interactive Server.
+FTPS is disabled. The Web App is tagged `azd-service-name: web` for the
+subsequent AZD service declaration.
+
+The module maps the application options directly to App Service settings:
+
+| App setting | Value |
+| --- | --- |
+| `ContentUnderstanding__Endpoint` | Foundry account endpoint |
+| `ContentUnderstanding__ApiVersion` | `2025-11-01` |
+| `ContentUnderstanding__AuthenticationMode` | `ManagedIdentity` by default; `ApiKey` only when explicitly selected |
+| `ContentUnderstanding__ApiKey` | Omitted in identity mode; versionless Key Vault reference in API-key mode |
+| `Storage__BlobServiceEndpoint` | Storage Blob service endpoint |
+| `Storage__ContainerName` | Private results container name |
+| `Storage__AuthenticationMode` | `ManagedIdentity` |
+| `Analysis__ConfidenceThreshold` | `0.8` by default |
+| `Analysis__OperationTimeout` | `00:10:00` |
+| `Analysis__PollInterval` | `00:00:02` |
+| `Uploads__MaxDocumentBytes` | `20971520` by default |
+| `APPLICATIONINSIGHTS_CONNECTION_STRING` | Workspace-based Application Insights connection string |
+
+`Storage__AccountName` and `Storage__AccountKey` are omitted. Account-key
+storage auth remains available only for explicit local configuration; no
+storage or Foundry key is emitted in a setting value, parameter, or output.
+
+The access module assigns only the roles needed by the selected runtime mode:
+
+| Principal | Scope | Role | Condition |
+| --- | --- | --- | --- |
+| Web App system identity | Foundry account | `Cognitive Services Content Understanding Owner` (`4b42bd01-da42-4c92-9b07-15ea5bd6a602`) | `ManagedIdentity` mode |
+| Web App system identity | Results container | `Storage Blob Data Contributor` (`ba92f5b4-2d11-453d-a403-e96b0029c9fe`) | Always; Blob auth is managed identity |
+| Web App system identity | Key Vault | `Key Vault Secrets User` (`4633458b-17de-408a-b874-0445c86b69e6`) | `ApiKey` mode |
+| Optional bootstrap principal | Foundry account | `Cognitive Services User` (`a97b65f3-24c7-4388-baec-2e87135dc908`) | Only when `bootstrapPrincipalId` is nonempty |
+
+Role assignments use deterministic GUIDs and resource-specific scopes, not
+subscription/resource-group-wide grants. The Web App's Foundry role includes
+analyzer deletion, unlike Content Understanding Contributor. The optional
+bootstrap role is for step 15's Entra-authenticated defaults operation; it
+does not grant deployment control-plane rights. If no bootstrap principal ID
+is supplied, that operator must already have the required data-plane role.
+Confirm role availability, assignment permissions, and live authorization
+during the approved environment preflight; local compilation does not validate
+them.
+
+The public outputs `WEB_APP_ID`, `WEB_APP_NAME`, and `WEB_APP_URL` are
+nonsecret deployment metadata for step 15. The app URL is HTTPS.
 
 ## Composition outputs and application mapping
 
@@ -111,16 +177,16 @@ assignment does not create a deployment cycle.
 | `KEY_VAULT_ID`, `KEY_VAULT_NAME`, `KEY_VAULT_URI` | Vault identity and App Service reference metadata. |
 | `CONTENT_UNDERSTANDING_API_KEY_SECRET_NAME`, `CONTENT_UNDERSTANDING_API_KEY_SECRET_URI` | Versionless secret reference metadata for the step 14 App Service key setting. |
 
-The later frontend must map these values to app settings, keep
-`Storage__AuthenticationMode` as `ManagedIdentity` by default, and omit
-`Storage__AccountName` and `Storage__AccountKey` in that mode. Explicit key
-mode requires both settings and secure key delivery; do not emit a key as an
+The frontend module maps these values to app settings, keeps
+`Storage__AuthenticationMode` as `ManagedIdentity`, and omits
+`Storage__AccountName` and `Storage__AccountKey`. Explicit storage account-key
+mode remains available for local configuration only; do not emit a key as an
 output. The output names above are infrastructure contracts, not app settings
 that are automatically bound.
 
-In the Foundry key mode, App Service should use a Key Vault reference to
-`CONTENT_UNDERSTANDING_API_KEY_SECRET_URI`; in managed-identity mode it must
-omit `ContentUnderstanding__ApiKey`. Managed identity remains the default.
+In Foundry API-key mode, App Service uses a Key Vault reference to
+`CONTENT_UNDERSTANDING_API_KEY_SECRET_URI`; in managed-identity mode it omits
+`ContentUnderstanding__ApiKey`. Managed identity remains the default.
 
 ## Local validation
 
@@ -137,7 +203,8 @@ permissions, deployment, or application readiness. Specifically defer Foundry
 region support and capacity for both pinned deployments, model catalog state,
 subscription quota, resource-name availability, provider registration, and
 operator permissions to step 18. Do not infer deployability from Bicep
-compilation and do not provision this composition in step 13. Cloud preflight
+compilation and do not provision this composition before the authorized
+deployment step. Cloud preflight
 and provisioning require later plan steps and explicit authorization. Foundry
 model tokens, Content Understanding use, Log Analytics, Application Insights,
 Key Vault, and Storage can incur charges once deployed.

@@ -305,7 +305,7 @@ All steps are initially `pending`; plan preparation does not count as implementa
 | 11 / `step-11-analysis-ui` | Upload-to-analysis-to-save workflow | 05, 06, 07, 08, 10 | Cross-service state; cancellation; retry correctness | done |
 | 12 / `step-12-infra-base` | Naming, resource group, monitoring, and storage IaC | 04 | Bicep resource composition | done |
 | 13 / `step-13-infra-foundry` | Foundry models and Key Vault IaC | 01, 12 | Model deployment contracts; secret handling | done |
-| 14 / `step-14-infra-web` | App Service configuration and scoped role assignments | 04, 12, 13 | Dependency graphs; identity and runtime configuration | pending |
+| 14 / `step-14-infra-web` | App Service configuration and scoped role assignments | 04, 12, 13 | Dependency graphs; identity and runtime configuration | done |
 | 15 / `step-15-azd` | AZD service wiring and model-default bootstrap | 14 | Deployment lifecycle; idempotent scripting | pending |
 | 16 / `step-16-docs` | Complete English project and deployment documentation | 09, 11, 15 | Technical writing grounded in implemented code | pending |
 | 17 / `step-17-local-checks` | Integrated local tests, browser checks, and packaging | 16 | Systematic verification and debugging | pending |
@@ -1127,4 +1127,34 @@ Checks not executed:
   - Foundry region support, model catalog/deployment availability, SKU/capacity, subscription quota, globally unique names, provider registration, operator permissions, and actual Key Vault secret-write authorization remain unverified and are deferred to step 18.
 Open issues: No blocker for the local step 13 acceptance criteria. Local compilation does not establish that the account or either model deployment can be provisioned in any target region.
 Handoff: Step 14 may consume the endpoint/account and Key Vault metadata, add the Web App configuration and least-privilege scoped roles, keep managed identity as the default, and use the versionless Key Vault reference only for explicit API-key mode. Step 15 owns the idempotent model-default bootstrap and must map the supported aliases to these deployment names. Stop here for manual selection of the next step.
+```
+
+### Step 14 / `step-14-infra-web`
+
+```text
+Step: 14 / step-14-infra-web
+Status: done
+Development model: not recorded
+Prerequisites checked: Steps 04, 12, and 13 are done; reviewed their configuration, module, output, role, and secret-handling contracts, section 8 infrastructure requirements, section 9 execution protocol, and the step 14 scope.
+Files changed: infra/main.bicep, infra/modules/frontend.bicep, infra/modules/access.bicep, infra/modules/monitoring.bicep, infra/README.md, plan.md.
+Contracts/decisions:
+  - Added a Linux App Service plan defaulting to one B1 Basic instance, parameterized over B1/B2/B3 and P0v3/P1v3/P2v3. The .NET 10 Web App enables its system-assigned identity, HTTPS-only, TLS 1.2 for app and SCM, WebSockets, HTTP/2, Always On, and session affinity; FTPS is disabled. `azd-service-name: web` is included in its tags.
+  - Mapped ContentUnderstanding endpoint, GA API version, auth mode, Storage endpoint/container/auth mode, confidence threshold, operation timeout, poll interval, upload limit, and Application Insights connection string to the app's exact double-underscore/environment setting names. Both services use managed identity by default. Storage account name/key are omitted.
+  - `ContentUnderstanding__ApiKey` is omitted in managed-identity mode. Explicit `ApiKey` mode sets only a versionless Key Vault reference to `ContentUnderstandingApiKey`; Key Vault Secrets User is granted to the Web identity only in that mode.
+  - Bicep has integer rather than decimal parameter types; `confidenceThreshold` is a bounded string with default `0.80`, parsed and range-validated by the existing application startup options. Upload limit is a bounded integer defaulting to 20,971,520 bytes.
+  - Added deterministic, scoped role assignments: Content Understanding Owner (`4b42bd01-da42-4c92-9b07-15ea5bd6a602`) at the Foundry account only in managed-identity mode; Storage Blob Data Contributor (`ba92f5b4-2d11-453d-a403-e96b0029c9fe`) at the results container; and Key Vault Secrets User (`4633458b-17de-408a-b874-0445c86b69e6`) at the vault only in API-key mode. An optional `bootstrapPrincipalId` grants Cognitive Services User (`a97b65f3-24c7-4388-baec-2e87135dc908`) at the Foundry account for step 15 defaults setup; otherwise that operator must already have the role.
+  - The module dependency graph is monitoring/storage/Foundry/Key Vault -> frontend -> access. Frontend and access outputs expose only resource metadata and principal ID; the Application Insights connection string is passed internally and the API key remains in Key Vault.
+  - Added `WEB_APP_ID`, `WEB_APP_NAME`, and `WEB_APP_URL` outputs for step 15. No `azure.yaml`, defaults bootstrap, or deployment behavior was added.
+Evidence:
+  - Current App Service runtime guidance documents the Linux runtime stack, double-underscore application-setting names, and .NET 10 platform runtime updates: https://learn.microsoft.com/en-us/azure/app-service/configure-language-dotnetcore ; https://azure.github.io/AppService/2026/05/06/platform-release-channel.html . Platform runtime/SKU availability for an approved target remains a preflight check.
+  - App Service configuration and hosting-plan guidance reviewed for runtime settings and paid Basic/Premium tiers: https://learn.microsoft.com/en-us/azure/app-service/configure-common ; https://learn.microsoft.com/en-us/azure/app-service/overview-hosting-plans
+Checks executed:
+  - Bicep CLI 0.49.2: `az bicep build --file .\infra\main.bicep --outfile <temporary-file>` succeeded for the complete nested graph; temporary output removed.
+  - `az bicep lint --file .\infra\main.bicep` succeeded without diagnostics.
+  - Inspected the compiled ARM template: confirmed frontend resources and all settings keys, the conditional Key Vault reference branch, all four role assignments with exact resource scopes, auth-mode/principal conditions, and absence of the Application Insights connection string from top-level deployment outputs.
+  - `git diff --check` passed.
+Checks not executed:
+  - No Azure login, subscription/resource lookup, runtime-list query, role lookup/assignment, deployment, or live authorization test.
+Open issues: No blocker for the local step 14 acceptance criteria. Confirm target-region .NET 10/App Service SKU availability, role definitions, operator role-assignment authorization, Key Vault reference resolution, and live managed-identity calls during the approved preflight/deployment steps. The bootstrap principal is intentionally unspecified; step 15 must supply one or confirm an existing Cognitive Services User assignment.
+Handoff: Step 15 may consume the `WEB_APP_*` outputs and `azd-service-name: web` tag to wire the single Web service. It must use the optional bootstrap principal or an existing Cognitive Services User assignment when configuring model defaults, and keep the API key in the versionless Key Vault reference only if key mode is explicitly selected. No resource was deployed; stop for manual selection of the next step.
 ```

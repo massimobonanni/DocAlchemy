@@ -21,6 +21,37 @@ param resultsContainerName string = 'analysis-results'
 @description('SKU for the Foundry multi-service account.')
 param foundrySkuName string = 'S0'
 
+@description('Single-instance App Service plan SKU; each allowed SKU supports Always On.')
+@allowed([
+  'B1'
+  'B2'
+  'B3'
+  'P0v3'
+  'P1v3'
+  'P2v3'
+])
+param appServicePlanSkuName string = 'B1'
+
+@description('Authentication mode for Content Understanding. Managed identity is the default.')
+@allowed([
+  'ManagedIdentity'
+  'ApiKey'
+])
+param contentUnderstandingAuthenticationMode string = 'ManagedIdentity'
+
+@description('Optional Entra principal object ID used by step 15 to configure Content Understanding defaults.')
+param bootstrapPrincipalId string = ''
+
+@description('Confidence warning threshold consumed by the application.')
+@minLength(1)
+@maxLength(16)
+param confidenceThreshold string = '0.80'
+
+@description('Maximum upload size in bytes consumed by the application.')
+@minValue(1)
+@maxValue(200000000)
+param maxDocumentBytes int = 20971520
+
 @description('GPT-5.2 deployment name used by the defaults bootstrap.')
 @minLength(1)
 @maxLength(64)
@@ -59,6 +90,8 @@ var uniquenessToken = uniqueString(subscription().id, environmentName)
 var namePart = take(safeEnvironmentName, 32)
 var storageNamePart = take(safeEnvironmentName, 9)
 var keyVaultNamePart = take(safeEnvironmentName, 8)
+var webNamePart = take(safeEnvironmentName, 20)
+var planNamePart = take(safeEnvironmentName, 16)
 var tags = {
   'azd-env-name': environmentName
   project: 'DocAlchemy'
@@ -122,6 +155,42 @@ module keyVault 'modules/keyvault.bicep' = {
   }
 }
 
+module frontend 'modules/frontend.bicep' = {
+  name: 'frontend'
+  scope: resourceGroup
+  params: {
+    location: location
+    appServicePlanName: '${abbreviations.webServerFarms}${planNamePart}-${uniquenessToken}'
+    appServicePlanSkuName: appServicePlanSkuName
+    webAppName: '${abbreviations.webSitesAppService}${webNamePart}-${uniquenessToken}'
+    tags: union(tags, {
+      'azd-service-name': 'web'
+    })
+    applicationInsightsConnectionString: monitoring.outputs.applicationInsightsConnectionString
+    contentUnderstandingEndpoint: foundry.outputs.endpoint
+    contentUnderstandingAuthenticationMode: contentUnderstandingAuthenticationMode
+    storageBlobServiceEndpoint: storage.outputs.blobServiceEndpoint
+    resultsContainerName: storage.outputs.containerName
+    keyVaultApiKeySecretUri: keyVault.outputs.apiKeySecretUri
+    confidenceThreshold: confidenceThreshold
+    maxDocumentBytes: maxDocumentBytes
+  }
+}
+
+module access 'modules/access.bicep' = {
+  name: 'access'
+  scope: resourceGroup
+  params: {
+    foundryAccountName: foundry.outputs.accountName
+    storageAccountName: storage.outputs.storageAccountName
+    resultsContainerName: storage.outputs.containerName
+    keyVaultName: keyVault.outputs.vaultName
+    webAppPrincipalId: frontend.outputs.principalId
+    contentUnderstandingAuthenticationMode: contentUnderstandingAuthenticationMode
+    bootstrapPrincipalId: bootstrapPrincipalId
+  }
+}
+
 output AZURE_RESOURCE_GROUP_NAME string = resourceGroup.name
 output LOG_ANALYTICS_WORKSPACE_ID string = monitoring.outputs.workspaceId
 output APPLICATION_INSIGHTS_ID string = monitoring.outputs.applicationInsightsId
@@ -146,3 +215,6 @@ output KEY_VAULT_NAME string = keyVault.outputs.vaultName
 output KEY_VAULT_URI string = keyVault.outputs.vaultUri
 output CONTENT_UNDERSTANDING_API_KEY_SECRET_NAME string = keyVault.outputs.apiKeySecretName
 output CONTENT_UNDERSTANDING_API_KEY_SECRET_URI string = keyVault.outputs.apiKeySecretUri
+output WEB_APP_ID string = frontend.outputs.webAppId
+output WEB_APP_NAME string = frontend.outputs.webAppName
+output WEB_APP_URL string = frontend.outputs.webAppUrl
