@@ -304,7 +304,7 @@ All steps are initially `pending`; plan preparation does not count as implementa
 | 10 / `step-10-results-ui` | Recursive results and confidence components | 03, 08 | Recursive UI; exact display semantics | done |
 | 11 / `step-11-analysis-ui` | Upload-to-analysis-to-save workflow | 05, 06, 07, 08, 10 | Cross-service state; cancellation; retry correctness | done |
 | 12 / `step-12-infra-base` | Naming, resource group, monitoring, and storage IaC | 04 | Bicep resource composition | done |
-| 13 / `step-13-infra-foundry` | Foundry models and Key Vault IaC | 01, 12 | Model deployment contracts; secret handling | pending |
+| 13 / `step-13-infra-foundry` | Foundry models and Key Vault IaC | 01, 12 | Model deployment contracts; secret handling | done |
 | 14 / `step-14-infra-web` | App Service configuration and scoped role assignments | 04, 12, 13 | Dependency graphs; identity and runtime configuration | pending |
 | 15 / `step-15-azd` | AZD service wiring and model-default bootstrap | 14 | Deployment lifecycle; idempotent scripting | pending |
 | 16 / `step-16-docs` | Complete English project and deployment documentation | 09, 11, 15 | Technical writing grounded in implemented code | pending |
@@ -1099,4 +1099,32 @@ Checks not executed:
   - No subscription lookup, Azure authentication, deployment, provisioning, resource access, role assignment, or live validation. No AZD packaging; service wiring belongs to step 15. Compilation is not evidence of Azure deployment success, regional availability, quota, or authorization.
 Open issues: No blocker for the local step 12 acceptance criteria. Container-name character rules and global name availability remain Azure deployment checks; environment preflight remains step 18.
 Handoff: Steps 13-14 may extend the documented module contracts and composition, retain nonsecret outputs, map the exact application settings, and add scoped identity access. Step 15 owns azure.yaml and bootstrap wiring. Stop for manual selection of the next step.
+```
+
+### Step 13 / `step-13-infra-foundry`
+
+```text
+Step: 13 / step-13-infra-foundry
+Status: done
+Development model: not recorded
+Prerequisites checked: Steps 01 and 12 are done; reviewed their section 14 records, section 8 infrastructure contracts, section 9 execution protocol, and the step 13 scope.
+Files changed: plan.md, infra/main.bicep, infra/modules/foundry.bicep, infra/modules/keyvault.bicep, infra/README.md.
+Contracts/decisions:
+  - Added a `Microsoft.CognitiveServices/accounts@2025-06-01` Foundry `AIServices` account with S0 as the default account SKU, a custom subdomain, and local key authentication enabled for the separately opted-in API-key mode.
+  - Added GPT-5.2 (`2025-12-11`) and text-embedding-3-large (`1`) OpenAI-format deployments. Names, versions, deployment SKUs, capacities, Foundry region, and account SKU are parameters. Defaults are `gpt-52`, `text-embedding-3-large`, `GlobalStandard`, and capacity 1; deployment model and alias defaults remain step 15's responsibility.
+  - Added a `Microsoft.KeyVault/vaults@2025-05-01` vault with Azure RBAC, soft delete, and purge protection. The Key Vault module obtains Foundry key 1 through `listKeys()` and writes it directly to the `ContentUnderstandingApiKey` secret resource. The key is not a Bicep parameter, output, or logged value; only resource identifiers and versionless secret-reference metadata are exposed.
+  - The Key Vault module consumes the Foundry account name output, making it depend on Foundry. Later App Service settings and access assignments can consume the vault metadata and Web identity without introducing a reverse dependency.
+  - `main.parameters.json` remains unchanged: the Foundry region defaults to the primary `location`, and all model/account settings have Bicep defaults that can be overridden with deployment parameters.
+  - Official contract sources: https://learn.microsoft.com/azure/ai-services/multi-service-resource#create-a-foundry-resource ; https://learn.microsoft.com/azure/ai-services/content-understanding/concepts/models-deployments ; https://learn.microsoft.com/azure/ai-services/content-understanding/service-limits#supported-generative-models ; https://learn.microsoft.com/azure/azure-resource-manager/bicep/scenarios-secrets
+Checks executed:
+  - Bicep CLI 0.49.2 (`az bicep version`).
+  - `az bicep build --file .\infra\main.bicep --outfile <temporary-file>` succeeded.
+  - `az bicep lint --file .\infra\main.bicep` succeeded without diagnostics.
+  - Parsed the generated ARM template locally and verified the AIServices account, two model deployments, RBAC-enabled Key Vault, direct `listKeys().key1` secret value expression, Key Vault module dependency on the Foundry module, and absence of key material in deployment outputs.
+  - `git diff --check` passed.
+Checks not executed:
+  - No Azure authentication, subscription/resource lookup, provisioning, deployment, role assignment, or live validation.
+  - Foundry region support, model catalog/deployment availability, SKU/capacity, subscription quota, globally unique names, provider registration, operator permissions, and actual Key Vault secret-write authorization remain unverified and are deferred to step 18.
+Open issues: No blocker for the local step 13 acceptance criteria. Local compilation does not establish that the account or either model deployment can be provisioned in any target region.
+Handoff: Step 14 may consume the endpoint/account and Key Vault metadata, add the Web App configuration and least-privilege scoped roles, keep managed identity as the default, and use the versionless Key Vault reference only for explicit API-key mode. Step 15 owns the idempotent model-default bootstrap and must map the supported aliases to these deployment names. Stop here for manual selection of the next step.
 ```
